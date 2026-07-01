@@ -1,0 +1,26 @@
+[build]
+  # Static PWA — no build step. An empty command overrides the
+  # "npm run build" command set in the Netlify UI, which fails
+  # because this repository has no package.json.
+  command = ""
+  publish = "."
+
+# SPA fallback: serve index.html for any path that isn't a real file.
+# Existing static files (sw.js, manifest.json, icons, ...) take
+# precedence over this rule, so they are served directly.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
