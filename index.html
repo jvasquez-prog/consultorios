@@ -4986,9 +4986,11 @@ function pinUnlock() {
 }
 
 // ===== DICTADO LIBRE (voz → extracción de entidades) =====
-let freeDictRecognition = null;
-let freeDictTranscript  = '';
-let freeDictStopping    = false;
+let freeDictRecognition   = null;
+let freeDictTranscript    = '';
+let freeDictStopping      = false;
+let freeDictAutoRestarts  = 0;
+const FREE_DICT_MAX_AUTO_RESTARTS = 4;
 
 const OBRAS_SOCIALES = [
   'PAMI','IOMA','OSDE','Galeno','Swiss Medical','OSECAC','Medife','UPCN',
@@ -5060,7 +5062,10 @@ function extractEntities(text) {
 
   // Nombre paciente — primer bloque de palabras con mayúscula, antes de número/keyword
   const STOP = /\b(dni|tel[eé]fono|diagn|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
-  const firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
+  // Descarta muletillas/etiquetas de campo dichas antes del valor (ej. "nombre Javier Vasquez")
+  const NAME_LABEL = /^\s*(nombre y apellido|nombre completo|nombre del paciente|apellido y nombre|el paciente es|el paciente|se llama|paciente es|paciente|apellido|nombre)\s*[:\-,]?\s*/i;
+  let firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
+  firstChunk = firstChunk.replace(NAME_LABEL, '').trim();
   const nomM = firstChunk.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:[,\s]+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/);
   if (nomM) r.nombre = nomM[1].replace(/\s*,\s*/g,', ').trim();
 
@@ -5109,11 +5114,64 @@ function showExtractionSummary(r) {
     <button onclick="startFreeDictation()" style="width:100%;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:var(--radius-sm);padding:7px;font-size:12px;color:var(--blue2);cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Redictar</button>`;
 }
 
+function launchFreeDictRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); resetFreeDictation(); return; }
+  freeDictRecognition = new SR();
+  freeDictRecognition.lang = 'es-AR';
+  freeDictRecognition.continuous = true;
+  freeDictRecognition.interimResults = true;
+  freeDictRecognition.onresult = ev => {
+    freeDictAutoRestarts = 0;
+    let fin = '', tmp = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      if (ev.results[i].isFinal) fin += ev.results[i][0].transcript + ' ';
+      else tmp += ev.results[i][0].transcript;
+    }
+    freeDictTranscript += fin;
+    const el = document.getElementById('live-transcript');
+    if (el) el.textContent = (freeDictTranscript + tmp).trim();
+  };
+  freeDictRecognition.onerror = ev => {
+    // Errores recuperables (silencio, corte de red, stop() propio): dejamos que
+    // onend decida si reintentar, para no perder el texto ya dictado.
+    if (ev.error === 'no-speech' || ev.error === 'network' || ev.error === 'aborted') return;
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+      showToast('Permiso de micrófono denegado');
+      resetFreeDictation();
+      return;
+    }
+    showToast('Error al escuchar: ' + ev.error);
+    resetFreeDictation();
+  };
+  freeDictRecognition.onend = () => {
+    freeDictRecognition = null;
+    if (freeDictStopping) {
+      if (freeDictTranscript.trim()) processFreeDictation();
+      else resetFreeDictation();
+      return;
+    }
+    // El navegador cortó la escucha solo (timeout/silencio): reintentamos
+    // sin descartar lo ya dictado, en vez de forzar a recargar todo.
+    if (freeDictAutoRestarts < FREE_DICT_MAX_AUTO_RESTARTS) {
+      freeDictAutoRestarts++;
+      launchFreeDictRecognition();
+    } else if (freeDictTranscript.trim()) {
+      showToast('Se perdió la conexión de audio, se guardó lo dictado hasta ahora');
+      processFreeDictation();
+    } else {
+      showToast('No se pudo mantener la escucha activa, intentá de nuevo');
+      resetFreeDictation();
+    }
+  };
+  freeDictRecognition.start();
+}
+
 function startFreeDictation() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
   if (freeDictRecognition) { freeDictRecognition.stop(); freeDictRecognition = null; }
-  freeDictTranscript = ''; freeDictStopping = false;
+  freeDictTranscript = ''; freeDictStopping = false; freeDictAutoRestarts = 0;
   const btn = document.getElementById('btn-free-voice');
   const guided = document.getElementById('btn-guided-voice');
   if (btn)    btn.style.display    = 'none';
@@ -5130,34 +5188,9 @@ function startFreeDictation() {
         </div>
         <button onclick="stopFreeDictation()" style="background:var(--red);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">■ Listo</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Nombrá: paciente, edad, DNI, obra social, tutor, teléfono, diagnóstico...</div>`;
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Decí directamente los datos, sin nombrar el campo (ej. "Javier Vasquez, 12 años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...")</div>`;
   }
-  freeDictRecognition = new SR();
-  freeDictRecognition.lang = 'es-AR';
-  freeDictRecognition.continuous = true;
-  freeDictRecognition.interimResults = true;
-  freeDictRecognition.onresult = ev => {
-    let fin = '', tmp = '';
-    for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      if (ev.results[i].isFinal) fin += ev.results[i][0].transcript + ' ';
-      else tmp += ev.results[i][0].transcript;
-    }
-    freeDictTranscript += fin;
-    const el = document.getElementById('live-transcript');
-    if (el) el.textContent = (freeDictTranscript + tmp).trim();
-  };
-  freeDictRecognition.onerror = ev => {
-    if (ev.error === 'no-speech') return;
-    showToast('Error al escuchar: ' + ev.error);
-    resetFreeDictation();
-  };
-  freeDictRecognition.onend = () => {
-    freeDictRecognition = null;
-    if (freeDictStopping && freeDictTranscript.trim()) processFreeDictation();
-    else if (!freeDictStopping && freeDictTranscript.trim()) processFreeDictation();
-    else resetFreeDictation();
-  };
-  freeDictRecognition.start();
+  launchFreeDictRecognition();
 }
 
 function stopFreeDictation() {
@@ -5176,7 +5209,7 @@ function processFreeDictation() {
 }
 
 function resetFreeDictation() {
-  freeDictStopping = false; freeDictTranscript = '';
+  freeDictStopping = false; freeDictTranscript = ''; freeDictAutoRestarts = 0;
   if (freeDictRecognition) { freeDictRecognition.stop(); freeDictRecognition = null; }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
