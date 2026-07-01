@@ -1,0 +1,117 @@
+Contexto General
+Debo realizar una adaptación completa de la aplicación "Synapsis", actualmente orientada a un servicio de Neurocirugía del Hospital de Niños de La Plata. El nuevo enfoque está dirigido a médicos pediatras que trabajan en consultorios particulares, atendiendo pacientes desde recién nacidos hasta los 15 años, con énfasis en bebés y niños de corta edad.
+
+Objetivos Principales
+    1. Eliminar funcionalidades obsoletas para el nuevo contexto.
+    2. Adaptar funcionalidades existentes al nuevo flujo de trabajo pediátrico.
+    3. Agregar nuevas funcionalidades críticas para el consultorio pediátrico.
+    4. Limpiar el repositorio eliminando archivos no esenciales para esta nueva versión.
+
+Eliminación de Módulos (Quitar solapas)
+    • "Cirugías" → No aplica a pediatría ambulatoria.
+    • "Pase" (pase de guardia) → No aplica a consultorio particular.
+    • "Stock" → No aplica a consultorio particular.
+
+Adaptación de Módulo "Pacientes"
+Rediseñar la base de datos de pacientes con los siguientes campos obligatorios:
+Campo
+Tipo/Dato
+Apellido y Nombre
+Texto
+Sexo
+Selector (Masculino/Femenino/Otro)
+Fecha de Nacimiento
+Fecha
+DNI
+Número (opcional para menores)
+Obra Social
+Texto
+Domicilio
+Texto
+Datos del Padre/Madre
+Nombre, Teléfono, Email
+Fecha de Atención
+Fecha (automática o manual)
+Diagnóstico
+Texto (libre)
+Tratamiento
+Texto (libre)
+Requisitos adicionales:
+    • Búsqueda rápida por apellido, DNI u obra social.
+    • Posibilidad de editar y agregar notas en cada consulta.
+    • Visualización clara en dispositivos móviles (ya que se usará en consultorio).
+
+Adaptación de Módulo "Seguimiento"
+Rediseñar para seguimiento pediátrico preventivo:
+A. Calendario de Vacunación
+    • Base de datos con el calendario nacional de vacunación (Argentina).
+    • Generación automática de alertas por WhatsApp a los padres/madres cuando se aproxime una vacuna.
+    • Opción de marcar vacunas como "Aplicada" con fecha.
+B. Recordatorios de Controles Médicos por Edad
+Implementar un sistema de alertas con la siguiente lógica:
+Edad del Paciente
+Frecuencia de Controles
+Recién nacido
+7 días, 14 días, 30 días
+0 a 1 año
+Mensual
+1 a 2 años
+Cada 3 meses
+2 a 4 años
+Cada 6 meses
+Mayor de 4 años
+Anual
+Requisitos:
+    • Notificaciones automáticas (WhatsApp, email o push) a los padres.
+    • Registro de cada control realizado (fecha, observaciones).
+
+Nuevas Funcionalidades
+1. Base de Datos de Pacientes + Comandos de Voz (CRÍTICO)
+    • Reemplazar las fichas físicas de papel por un sistema digital.
+    • Comando de voz: Permitir cargar datos de pacientes (nombre, diagnóstico, etc.) usando el micrófono nativo del celular.
+    • Pregunta para análisis técnico:
+        ◦ ¿Es factible implementar esto sin costos excesivos de tokens/API? (ej. usando reconocimiento de voz offline o nativo del dispositivo).
+        ◦ ¿Qué librerías o herramientas recomiendas para iOS/Android?
+        ◦ ¿Cómo se integraría con la base de datos existente?
+2. Generación de Historia Clínica / Informe Pediátrico
+    • Opción para generar un informe pediátrico en PDF o documento editable.
+    • Debe incluir:
+        ◦ Datos personales del paciente.
+        ◦ Antecedentes.
+        ◦ Controles realizados.
+        ◦ Vacunación.
+        ◦ Diagnósticos y tratamientos.
+    • Debe ser descargable o imprimible desde el consultorio.
+3. Funcionalidad Opcional (a considerar)
+    • "Cuadernito de Crecimiento Digital":
+        ◦ Reemplazar el cuadernillo físico que llevan las madres.
+        ◦ Registrar talla, peso, perímetro cefálico.
+        ◦ Mostrar evolución automática según curvas de crecimiento (OMS).
+        ◦ Generar alertas si el percentil está fuera de rango.
+        ◦ Enfoque principal en niños de 0 a 2 años.
+
+Adicional: Limpieza del Repositorio
+    • Revisar el repositorio local y eliminar:
+        ◦ Archivos relacionados con cirugías, pase de guardia y stock.
+        ◦ Dependencias o librerías no utilizadas.
+        ◦ Código obsoleto o comentado.
+    • Mantener solo lo necesario para la nueva versión pediátrica.
+    • Entregar: Una estructura de carpetas clara y documentación básica del nuevo flujo.
+
+Agregado:
+- Deba haber un  cambio de base de datos de "Airtable" ( no puede haber solapamiento con la actual base de datos de Synapsis"
+
+- 
+Preguntas Directas para Claude Code
+    1. ¿Cuál es el enfoque más eficiente para implementar el reconocimiento de voz sin costos elevados?
+    2. ¿Qué base de datos (SQLite, Firebase, etc.) recomiendas para este tipo de app con datos sensibles?
+    3. ¿Cómo estructurarías las notificaciones por WhatsApp? (¿API de Twilio, WhatsApp Business, u otra?)
+    4. ¿Qué archivos del repositorio actual consideras prescindibles para esta nueva versión?
+    5. ¿Qué recomendaciones técnicas das para la generación de informes PDF desde una app móvil?
+
+Entregables Esperados
+    • Plan de migración/adaptación del código.
+    • Lista de archivos a eliminar.
+    • Propuesta técnica para comandos de voz.
+    • Wireframe o flujo de navegación básico para la nueva app.
+    • Estimación de tiempo y recursos.
