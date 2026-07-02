@@ -407,14 +407,26 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
 
     <!-- VACUNAS -->
     <div class="screen" id="screen-seg">
-      <div class="sec-title">Vacunas pendientes</div>
+      <div class="sec-title">Calendario 2026 por paciente</div>
+      <div id="vac-pac-selector-wrap"></div>
+      <div id="vac-pac-box"></div>
+      <div class="sec-title" style="margin-top:18px">Vacunas pendientes</div>
       <div id="list-seg"><div class="loader"><div class="spinner"></div>Cargando...</div></div>
     </div>
 
     <!-- CONTROLES -->
     <div class="screen" id="screen-ctrl">
-      <div class="sec-title">Controles pendientes</div>
+      <div class="sec-title">Controles según edad por paciente</div>
+      <div id="ctrl-pac-selector-wrap"></div>
+      <div id="ctrl-pac-box"></div>
+      <div class="sec-title" style="margin-top:18px">Controles pendientes</div>
       <div id="list-ctrl"><div class="loader"><div class="spinner"></div>Cargando...</div></div>
+    </div>
+
+    <!-- CALENDARIO NACIONAL DE VACUNACIÓN -->
+    <div class="screen" id="screen-cal">
+      <div class="sec-title">Calendario Nacional de Vacunación 2026</div>
+      <div id="list-cal"></div>
     </div>
 
   </div>
@@ -426,6 +438,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     <button class="nav-btn"         id="nav-pac"   onclick="showScreen('pac',this)"><span class="nav-icon">👤</span>Pacientes</button>
     <button class="nav-btn"         id="nav-seg"   onclick="showScreen('seg',this)"><span class="nav-icon">💉</span>Vacunas</button>
     <button class="nav-btn"         id="nav-ctrl"  onclick="showScreen('ctrl',this)"><span class="nav-icon">📅</span>Controles</button>
+    <button class="nav-btn"         id="nav-cal"   onclick="showScreen('cal',this)"><span class="nav-icon">💉🗓️</span>Calendario</button>
   </nav>
 </div>
 
@@ -1433,6 +1446,9 @@ function showScreen(name, btn) {
   } else if (name==='ctrl') {
     fp.style.display='none'; fab.style.display='none';
     loadControles();
+  } else if (name==='cal') {
+    fp.style.display='none'; fab.style.display='none';
+    loadCalendarioVacunacion();
   } else {
     fp.style.display='none'; fab.style.display='none';
   }
@@ -2487,7 +2503,26 @@ function openEditPacById(recId) {
   document.getElementById('modal-pac-new').classList.add('open');
 }
 
+// stop()/onend del reconocimiento de voz no es instantáneo: hay una ventana
+// real entre decir/tocar "Listo" y que la extracción se aplique a los campos.
+// Guardar en esa ventana crea un paciente sin nombre ("Sin nombre") o con
+// datos desactualizados. En vez de abortar el guardado y obligar a tocar
+// "Guardar" de nuevo, esperamos (mostrando el motivo) y seguimos solos.
+async function waitForVoiceDictationToFinish() {
+  if (!freeDictRecognition && !freeDictProcessing) return;
+  const btn = document.getElementById('pac-new-btn-save');
+  const originalText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Terminando de procesar el dictado por voz...'; }
+  showToast('Terminando de procesar el dictado por voz...');
+  const start = Date.now();
+  while ((freeDictRecognition || freeDictProcessing) && Date.now() - start < 6000) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (btn) { btn.disabled = false; btn.textContent = originalText; }
+}
+
 async function savePac(force = false) {
+  await waitForVoiceDictationToFinish();
   const nombre = document.getElementById('pf-nombre').value.trim();
   const fields = {};
   if (nombre) fields[FP.nombre] = nombre;
@@ -2629,6 +2664,8 @@ function updateFileLabel() {
 // ===== SEGUIMIENTOS =====
 // ===== VACUNAS =====
 async function loadVacunas() {
+  const selEl = document.getElementById('vac-pac-selector-wrap');
+  if (selEl) selEl.innerHTML = pacienteSelectorHtml('vac-pac-selector', 'renderVacunasPaciente');
   const el = document.getElementById('list-seg');
   el.innerHTML = '<div class="loader"><div class="spinner"></div>Cargando...</div>';
   try {
@@ -2668,6 +2705,8 @@ async function loadVacunas() {
 
 // ===== CONTROLES =====
 async function loadControles() {
+  const selEl = document.getElementById('ctrl-pac-selector-wrap');
+  if (selEl) selEl.innerHTML = pacienteSelectorHtml('ctrl-pac-selector', 'renderControlesPaciente');
   const el = document.getElementById('list-ctrl');
   el.innerHTML = '<div class="loader"><div class="spinner"></div>Cargando...</div>';
   try {
@@ -2705,6 +2744,222 @@ async function loadControles() {
   } catch(e) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-msg">Error al cargar controles.</div></div>';
   }
+}
+
+// ===== CALENDARIO NACIONAL DE VACUNACIÓN 2026 (Ministerio de Salud, Argentina) =====
+// Fuente: https://www.argentina.gob.ar/salud/vacunas — PDF oficial "Calendario Nacional
+// de Vacunación 2026". Transcripción completa de la tabla oficial (todas las edades),
+// para consulta/referencia en la solapa "Calendario".
+const CALENDARIO_VACUNACION_2026 = [
+  { edad: 'Recién nacido', vacuna: 'BCG',                          dosis: 'Única dosis' },
+  { edad: 'Recién nacido', vacuna: 'Hepatitis B',                  dosis: 'Dosis neonatal (primeras 12 hs de vida)' },
+  { edad: '2 meses',       vacuna: 'Neumococo conjugada',          dosis: '1° dosis' },
+  { edad: '2 meses',       vacuna: 'Quíntuple o Pentavalente',     dosis: '1° dosis' },
+  { edad: '2 meses',       vacuna: 'IPV (Polio)',                  dosis: '1° dosis' },
+  { edad: '2 meses',       vacuna: 'Rotavirus',                    dosis: '1° dosis (antes de las 14 semanas y 6 días)' },
+  { edad: '3 meses',       vacuna: 'Meningocócica ACYW',           dosis: '1° dosis' },
+  { edad: '4 meses',       vacuna: 'Neumococo conjugada',          dosis: '2° dosis' },
+  { edad: '4 meses',       vacuna: 'Quíntuple o Pentavalente',     dosis: '2° dosis' },
+  { edad: '4 meses',       vacuna: 'IPV (Polio)',                  dosis: '2° dosis' },
+  { edad: '4 meses',       vacuna: 'Rotavirus',                    dosis: '2° dosis (antes de las 24 semanas)' },
+  { edad: '5 meses',       vacuna: 'Meningocócica ACYW',           dosis: '2° dosis' },
+  { edad: '6 meses',       vacuna: 'Quíntuple o Pentavalente',     dosis: '3° dosis' },
+  { edad: '6 meses',       vacuna: 'IPV (Polio)',                  dosis: '3° dosis' },
+  { edad: '12 meses',      vacuna: 'Neumococo conjugada',          dosis: 'Refuerzo' },
+  { edad: '12 meses',      vacuna: 'Hepatitis A',                  dosis: 'Única dosis' },
+  { edad: '12 meses',      vacuna: 'Triple Viral (SRP)',           dosis: '1° dosis' },
+  { edad: '15 meses',      vacuna: 'Quíntuple/Pentavalente (DPT-Hib)', dosis: '1° refuerzo' },
+  { edad: '15 meses',      vacuna: 'Meningocócica ACYW',           dosis: 'Refuerzo' },
+  { edad: '15 meses',      vacuna: 'Antigripal',                   dosis: 'Dosis anual' },
+  { edad: '15 meses',      vacuna: 'Varicela',                     dosis: '1° dosis' },
+  { edad: '18 meses',      vacuna: 'Triple Viral (SRP)',           dosis: '2° dosis (nacidos desde el 1/7/2024)' },
+  { edad: '18 meses',      vacuna: 'Fiebre Amarilla',              dosis: '1° dosis — sólo zonas de riesgo' },
+  { edad: 'Cumplen 5 años en 2026 (nacidos 2021-2024)', vacuna: 'Triple Viral (SRP)', dosis: '2° dosis — esquema anterior a 2026' },
+  { edad: 'Cumplen 5 años en 2026 (nacidos en 2021)',   vacuna: 'Antigripal',          dosis: 'Refuerzo' },
+  { edad: 'Cumplen 5 años en 2026 (nacidos en 2021)',   vacuna: 'Varicela',            dosis: '2° dosis' },
+  { edad: 'Cumplen 5 años en 2026 (nacidos en 2021)',   vacuna: 'Triple Bacteriana Celular (DPT)', dosis: '2° refuerzo' },
+  { edad: 'Cumplen 11 años en 2026 (nacidos en 2015)',  vacuna: 'Meningocócica ACYW',  dosis: 'Única dosis' },
+  { edad: 'Cumplen 11 años en 2026 (nacidos en 2015)',  vacuna: 'Virus Papiloma Humano (VPH)', dosis: 'Refuerzo' },
+  { edad: 'Cumplen 11 años en 2026 (nacidos en 2015)',  vacuna: 'Doble Bacteriana (dT)', dosis: 'Única dosis' },
+  { edad: 'Cumplen 11 años en 2026 (nacidos en 2015)',  vacuna: 'Fiebre Amarilla',     dosis: 'Refuerzo — sólo zonas de riesgo' },
+  { edad: 'A partir de los 15 años', vacuna: 'Triple Viral (SRP)', dosis: 'Iniciar o completar esquema' },
+  { edad: 'A partir de los 15 años', vacuna: 'Meningocócica ACYW', dosis: 'Iniciar o completar esquema' },
+  { edad: 'Adultos',       vacuna: 'Hepatitis B',                  dosis: 'Iniciar o completar esquema' },
+  { edad: 'Adultos',       vacuna: 'Hepatitis A',                  dosis: 'Única dosis — recomendada 65 años o más' },
+  { edad: 'Adultos',       vacuna: 'Antigripal',                   dosis: 'Dosis anual — recomendada 65 años o más' },
+  { edad: 'Adultos',       vacuna: 'Doble Bacteriana (dT)',        dosis: 'Refuerzo cada 10 años' },
+  { edad: 'Embarazadas',   vacuna: 'Antigripal',                   dosis: 'Una dosis, en cualquier trimestre' },
+  { edad: 'Embarazadas',   vacuna: 'Triple Bacteriana Acelular (dTpa)', dosis: 'Una dosis, a partir de semana 20' },
+  { edad: 'Embarazadas',   vacuna: 'Virus Sincicial Respiratorio (VSR)', dosis: 'Única dosis — semanas 32 a 36,6' },
+  { edad: 'Puérperas',     vacuna: 'Antigripal',                   dosis: 'Una dosis, si no la recibió durante el embarazo' },
+  { edad: 'Puérperas',     vacuna: 'Triple Viral (SRP)',           dosis: 'Iniciar o completar esquema' },
+  { edad: 'Personal de salud', vacuna: 'Antigripal',                dosis: 'Dosis anual' },
+  { edad: 'Personal de salud', vacuna: 'Doble Bacteriana (dT)',     dosis: 'Una dosis si asiste menores de 12 meses — revacunar cada 5 años' },
+];
+
+// Esquema simplificado (edades pediátricas estándar, sin excepciones de cohorte)
+// usado para calcular, por paciente, qué vacuna corresponde y cuánto tiempo falta.
+// No reemplaza el calendario oficial completo (ver solapa "Calendario") para los
+// casos con reglas de excepción por año de nacimiento.
+const PEDIATRIC_VACUNAS_SCHEDULE = [
+  { meses: 0,  edad: 'Recién nacido', vacuna: 'BCG',                      dosis: 'Única dosis' },
+  { meses: 0,  edad: 'Recién nacido', vacuna: 'Hepatitis B',              dosis: 'Dosis neonatal' },
+  { meses: 2,  edad: '2 meses',  vacuna: 'Neumococo conjugada',           dosis: '1° dosis' },
+  { meses: 2,  edad: '2 meses',  vacuna: 'Quíntuple o Pentavalente',      dosis: '1° dosis' },
+  { meses: 2,  edad: '2 meses',  vacuna: 'IPV (Polio)',                   dosis: '1° dosis' },
+  { meses: 2,  edad: '2 meses',  vacuna: 'Rotavirus',                     dosis: '1° dosis' },
+  { meses: 3,  edad: '3 meses',  vacuna: 'Meningocócica ACYW',            dosis: '1° dosis' },
+  { meses: 4,  edad: '4 meses',  vacuna: 'Neumococo conjugada',           dosis: '2° dosis' },
+  { meses: 4,  edad: '4 meses',  vacuna: 'Quíntuple o Pentavalente',      dosis: '2° dosis' },
+  { meses: 4,  edad: '4 meses',  vacuna: 'IPV (Polio)',                   dosis: '2° dosis' },
+  { meses: 4,  edad: '4 meses',  vacuna: 'Rotavirus',                     dosis: '2° dosis' },
+  { meses: 5,  edad: '5 meses',  vacuna: 'Meningocócica ACYW',            dosis: '2° dosis' },
+  { meses: 6,  edad: '6 meses',  vacuna: 'Quíntuple o Pentavalente',      dosis: '3° dosis' },
+  { meses: 6,  edad: '6 meses',  vacuna: 'IPV (Polio)',                   dosis: '3° dosis' },
+  { meses: 12, edad: '12 meses', vacuna: 'Neumococo conjugada',           dosis: 'Refuerzo' },
+  { meses: 12, edad: '12 meses', vacuna: 'Hepatitis A',                   dosis: 'Única dosis' },
+  { meses: 12, edad: '12 meses', vacuna: 'Triple Viral (SRP)',            dosis: '1° dosis' },
+  { meses: 15, edad: '15 meses', vacuna: 'Quíntuple/Pentavalente (DPT-Hib)', dosis: '1° refuerzo' },
+  { meses: 15, edad: '15 meses', vacuna: 'Meningocócica ACYW',            dosis: 'Refuerzo' },
+  { meses: 15, edad: '15 meses', vacuna: 'Varicela',                      dosis: '1° dosis' },
+  { meses: 18, edad: '18 meses', vacuna: 'Triple Viral (SRP)',            dosis: '2° dosis' },
+  { meses: 60, edad: '5 años',   vacuna: 'Varicela',                      dosis: '2° dosis' },
+  { meses: 60, edad: '5 años',   vacuna: 'Triple Bacteriana Celular (DPT)', dosis: '2° refuerzo' },
+  { meses: 132,edad: '11 años',  vacuna: 'Meningocócica ACYW',            dosis: 'Única dosis' },
+  { meses: 132,edad: '11 años',  vacuna: 'Virus Papiloma Humano (VPH)',   dosis: 'Refuerzo' },
+  { meses: 132,edad: '11 años',  vacuna: 'Doble Bacteriana (dT)',         dosis: 'Única dosis' },
+];
+
+function loadCalendarioVacunacion() {
+  const el = document.getElementById('list-cal');
+  if (!el) return;
+  const rows = CALENDARIO_VACUNACION_2026.map(v => `
+    <tr>
+      <td style="padding:8px 6px;font-size:12px;color:var(--text2);white-space:nowrap">${escHtml(v.edad)}</td>
+      <td style="padding:8px 6px;font-size:12px;color:var(--text);font-weight:600">${escHtml(v.vacuna)}</td>
+      <td style="padding:8px 6px;font-size:12px;color:var(--text2)">${escHtml(v.dosis)}</td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.5">
+      Fuente: <a href="https://www.argentina.gob.ar/salud/vacunas" target="_blank" rel="noopener" style="color:var(--blue2)">Ministerio de Salud de la Nación</a> — Calendario Nacional de Vacunación 2026. Las vacunas marcadas "sólo zonas de riesgo" no aplican a toda la población.
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Edad</th>
+            <th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Vacuna</th>
+            <th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Dosis</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ===== VACUNAS / CONTROLES POR PACIENTE (calculado desde fecha de nacimiento) =====
+function fmtRemaining(fecha, hoy) {
+  const diffMs = fecha - hoy;
+  const diffDias = Math.round(diffMs / 86400000);
+  if (diffDias < 0) return { label: `Atrasada ${Math.abs(diffDias)} día${Math.abs(diffDias)!==1?'s':''}`, cls: 'tag-red' };
+  if (diffDias === 0) return { label: 'Hoy', cls: 'tag-amber' };
+  if (diffDias < 30) return { label: `Faltan ${diffDias} día${diffDias!==1?'s':''}`, cls: 'tag-amber' };
+  const meses = Math.round(diffDias / 30);
+  return { label: `Faltan ~${meses} mes${meses!==1?'es':''}`, cls: 'tag-green' };
+}
+
+function pacienteSelectorHtml(selectId, onchangeFn) {
+  const opts = allPacientes
+    .slice()
+    .sort((a,b) => (a.fields[FP.nombre]||'').localeCompare(b.fields[FP.nombre]||'', 'es'))
+    .map(p => `<option value="${p.id}">${escHtml(p.fields[FP.nombre] || 'Sin nombre')}</option>`).join('');
+  return `
+    <div style="margin-bottom:14px">
+      <select id="${selectId}" class="form-input" onchange="${onchangeFn}(this.value)">
+        <option value="">Elegí un paciente para ver su calendario personalizado...</option>
+        ${opts}
+      </select>
+    </div>`;
+}
+
+function renderVacunasPaciente(pacId) {
+  const box = document.getElementById('vac-pac-box');
+  if (!box) return;
+  if (!pacId) { box.innerHTML = ''; return; }
+  const pac = allPacientes.find(p => p.id === pacId);
+  const fnac = pac && pac.fields[FP.fnac];
+  if (!fnac) { box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Este paciente no tiene fecha de nacimiento cargada.</div></div>`; return; }
+  const nacimiento = new Date(fnac + 'T00:00:00');
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const filas = PEDIATRIC_VACUNAS_SCHEDULE.map(v => {
+    const fecha = new Date(nacimiento); fecha.setMonth(fecha.getMonth() + v.meses);
+    const rem = fmtRemaining(fecha, hoy);
+    return { ...v, fecha, rem };
+  }).filter(v => v.fecha.getFullYear() === 2026 || (v.fecha.getFullYear() < 2026 && v.rem.cls === 'tag-red'));
+  if (!filas.length) {
+    box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Sin vacunas correspondientes a 2026 para este paciente según su edad.</div></div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Esquema estándar simplificado — para casos con reglas de excepción por cohorte, consultá la solapa "Calendario"</div>
+    ${filas.map(v => `
+      <div class="card seg-card" style="margin-bottom:8px">
+        <div class="card-header">
+          <div class="card-title">💉 ${escHtml(v.vacuna)}</div>
+          <span class="date-chip">${fmtDate(v.fecha.toISOString().slice(0,10))}</span>
+        </div>
+        <div class="card-sub">${escHtml(v.edad)} · ${escHtml(v.dosis)}</div>
+        <div class="card-meta"><span class="tag ${v.rem.cls}">${v.rem.label}</span></div>
+      </div>`).join('')}`;
+}
+
+function generarControlesEsperados(fnacStr) {
+  const nacimiento = new Date(fnacStr + 'T00:00:00');
+  const addDias  = d => { const x = new Date(nacimiento); x.setDate(x.getDate()+d); return x; };
+  const addMeses = m => { const x = new Date(nacimiento); x.setMonth(x.getMonth()+m); return x; };
+  const controles = [
+    { label: 'Control a los 7 días',  fecha: addDias(7) },
+    { label: 'Control a los 14 días', fecha: addDias(14) },
+    { label: 'Control a los 30 días', fecha: addDias(30) },
+  ];
+  // 0 a 1 año: control mensual
+  for (let m = 2; m <= 12; m++) controles.push({ label: `Control mensual (${m} meses)`, fecha: addMeses(m) });
+  // >1 a 2 años: cada 3 meses
+  for (let m = 15; m <= 24; m += 3) controles.push({ label: `Control trimestral (${m} meses)`, fecha: addMeses(m) });
+  // >2 a 4 años: cada 6 meses
+  for (let m = 30; m <= 48; m += 6) controles.push({ label: `Control semestral (${m} meses)`, fecha: addMeses(m) });
+  // >4 años: anual (hasta los 12 años, rango cubierto por esta app)
+  for (let a = 5; a <= 12; a++) controles.push({ label: `Control anual (${a} años)`, fecha: addMeses(a*12) });
+  return controles;
+}
+
+function renderControlesPaciente(pacId) {
+  const box = document.getElementById('ctrl-pac-box');
+  if (!box) return;
+  if (!pacId) { box.innerHTML = ''; return; }
+  const pac = allPacientes.find(p => p.id === pacId);
+  const fnac = pac && pac.fields[FP.fnac];
+  if (!fnac) { box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Este paciente no tiene fecha de nacimiento cargada.</div></div>`; return; }
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const todos = generarControlesEsperados(fnac).map(c => ({ ...c, rem: fmtRemaining(c.fecha, hoy) }));
+  // Mostrar el último vencido/pasado (si lo hay) + todos los próximos, para no saturar con años ya cumplidos
+  const pasados  = todos.filter(c => c.fecha < hoy);
+  const proximos = todos.filter(c => c.fecha >= hoy);
+  const aMostrar = [...pasados.slice(-1), ...proximos.slice(0, 6)];
+  if (!aMostrar.length) {
+    box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Sin controles calculados para este paciente.</div></div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Recién nacido: 7/14/30 días · 0-1 año: mensual · 1-2 años: cada 3 meses · 2-4 años: cada 6 meses · +4 años: anual</div>
+    ${aMostrar.map(c => `
+      <div class="card seg-card" style="margin-bottom:8px">
+        <div class="card-header">
+          <div class="card-title">📅 ${escHtml(c.label)}</div>
+          <span class="date-chip">${fmtDate(c.fecha.toISOString().slice(0,10))}</span>
+        </div>
+        <div class="card-meta"><span class="tag ${c.rem.cls}">${c.rem.label}</span></div>
+      </div>`).join('')}`;
 }
 
 // ===== STOCK (Interfase A) =====
@@ -5002,6 +5257,12 @@ let freeDictRecognition   = null;
 let freeDictTranscript    = '';
 let freeDictStopping      = false;
 let freeDictAutoRestarts  = 0;
+// true entre el momento en que se pide terminar el dictado (botón "Listo" o
+// decir "listo") y el momento en que la extracción realmente se aplica a los
+// campos — stop() no es instantáneo, así que hay una ventana real en la que
+// el nombre (y el resto) todavía no está en el formulario. Si se guarda en
+// esa ventana, el paciente queda sin nombre. savePac() consulta este flag.
+let freeDictProcessing    = false;
 const FREE_DICT_MAX_AUTO_RESTARTS = 4;
 
 const OBRAS_SOCIALES = [
@@ -5019,15 +5280,34 @@ function extractEntities(text) {
   if (/\b(femenino|ni[ñn]a|nena|mujer)\b/.test(tl))       r.sexo = 'Femenino';
   else if (/\b(masculino|ni[ñn]o|nene|var[oó]n)\b/.test(tl)) r.sexo = 'Masculino';
 
-  // DNI — 7 u 8 dígitos aislados
-  const dniM = text.match(/\b(\d{7,8})\b/);
-  if (dniM) r.dni = dniM[1];
+  // DNI — la Web Speech API suele transcribir los números dictados en grupos
+  // ("cuarenta, ciento veintitrés, cuatrocientos cincuenta y seis") con
+  // espacios entre grupos, no como una tira continua. Si se dice la palabra
+  // "dni", juntamos todos los dígitos que aparecen justo después (hasta el
+  // próximo signo de puntuación o palabra clave) en vez de buscar un bloque
+  // de 7-8 dígitos ya pegado.
+  const dniKwM = text.match(/dni[:\s]+([\d\s.\-]{6,25})/i);
+  if (dniKwM) {
+    const digits = dniKwM[1].replace(/\D/g,'');
+    if (digits.length >= 7 && digits.length <= 8) r.dni = digits;
+  }
+  if (!r.dni) {
+    const dniM = text.match(/\b(\d{7,8})\b/);
+    if (dniM) r.dni = dniM[1];
+  }
 
-  // Teléfono — 10 dígitos o con separadores, distinto del DNI
-  const telSep = text.match(/\b(\d{2,4}[\s\-]?\d{3,4}[\s\-]?\d{4})\b/);
-  if (telSep) {
-    const d = telSep[1].replace(/[\s\-]/g,'');
-    if (d !== r.dni && d.length >= 10) r.tel = telSep[1];
+  // Teléfono — mismo problema de agrupación que el DNI.
+  const telKwM = text.match(/(?:tel[eé]fono|celular|cel)[:\s]+([\d\s.\-]{6,25})/i);
+  if (telKwM) {
+    const digits = telKwM[1].replace(/\D/g,'');
+    if (digits.length >= 8 && digits.length <= 11 && digits !== r.dni) r.tel = digits;
+  }
+  if (!r.tel) {
+    const telSep = text.match(/\b(\d{2,4}[\s\-]?\d{3,4}[\s\-]?\d{4})\b/);
+    if (telSep) {
+      const d = telSep[1].replace(/[\s\-]/g,'');
+      if (d !== r.dni && d.length >= 10) r.tel = telSep[1];
+    }
   }
   if (!r.tel) {
     const telMs = [...text.matchAll(/\b(\d{10,11})\b/g)];
@@ -5063,8 +5343,28 @@ function extractEntities(text) {
   // Al dictar de corrido (sin comas/puntos, como suele transcribir la Web
   // Speech API) hay que cortar cada campo de texto libre apenas empieza la
   // palabra-clave del campo siguiente, si no se "come" todo el resto.
-  const NEXT_FIELD_KW = /\b(antecedentes?|notas(?:\s+cl[ií]nicas?)?|tratamiento|tto|medicaci[oó]n|observaci[oó]n|obs|diagn[oó]stico|dx|dni|tel[eé]fono|mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)\b/i;
+  const NEXT_FIELD_KW = /\b(antecedentes?|notas(?:\s+cl[ií]nicas?)?|tratamiento|tto|medicaci[oó]n|observaci[oó]n|obs|diagn[oó]stico|dx|dni|tel[eé]fono|celular|cel|domicilio|direcci[oó]n|correo(?:\s+electr[oó]nico)?|e[\s-]?mail|mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)\b/i;
   const trimToNextField = s => s.split(NEXT_FIELD_KW)[0].trim();
+
+  // Domicilio — después de keyword (es texto libre, sin patrón fijo, así que
+  // necesita un ancla igual que diagnóstico/antecedentes/notas)
+  const domM = text.match(/(?:domicilio|direcci[oó]n|vive en|vivimos en|queda en)[:\s]+([^.]{4,100})/i);
+  if (domM) r.domicilio = trimToNextField(domM[1]);
+
+  // Email — se dicta letra por letra con los símbolos como palabras ("arroba",
+  // "punto", "guion"/"guion bajo"); hay que traducirlos a los caracteres reales
+  // y pegar todo sin espacios para reconstruir la dirección.
+  const emailM = text.match(/(?:correo electr[oó]nico|correo|e[\s-]?mail|mail)[:\s]+([^,]{3,100})/i);
+  if (emailM) {
+    let raw = trimToNextField(emailM[1]).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    raw = raw
+      .replace(/\bguion\s+bajo\b/g, '_')
+      .replace(/\barroba\b/g, '@')
+      .replace(/\bpunto\b/g, '.')
+      .replace(/\bguion\b/g, '-')
+      .replace(/\s+/g, '');
+    if (/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(raw)) r.email = raw;
+  }
 
   // Diagnóstico — después de keyword ("principal"/"presuntivo" es parte de la
   // muletilla, no del diagnóstico en sí, ej. "diagnóstico principal asma")
@@ -5086,7 +5386,7 @@ function extractEntities(text) {
   if (notasParts.length) r.notas = notasParts.join('. ');
 
   // Nombre paciente — primer bloque de palabras con mayúscula, antes de número/keyword
-  const STOP = /\b(dni|tel[eé]fono|diagn|antec|notas|obs|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
+  const STOP = /\b(dni|tel[eé]fono|celular|cel|domicilio|direcci[oó]n|correo|mail|diagn|antec|notas|obs|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
   // Descarta muletillas/etiquetas de campo dichas antes del valor (ej. "nombre Javier Vasquez")
   const NAME_LABEL = /^\s*(nombre y apellido|nombre completo|nombre del paciente|apellido y nombre|el paciente es|el paciente|se llama|paciente es|paciente|apellido|nombre)\s*[:\-,]?\s*/i;
   let firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
@@ -5107,6 +5407,8 @@ function applyExtraction(r) {
   if (r.obraSoc) set('pf-os',     r.obraSoc);
   if (r.tutor)   set('pf-tutor',  r.tutor);
   if (r.tel)     set('pf-tel',    r.tel);
+  if (r.domicilio) set('pf-domicilio', r.domicilio);
+  if (r.email)   set('pf-email',  r.email);
   if (r.diag)    set('pf-diag',   r.diag);
   if (r.antec)   set('pf-ant',    r.antec);
   if (r.notas)   set('pf-notas',  r.notas);
@@ -5134,6 +5436,8 @@ function showExtractionSummary(r) {
     {k:'obraSoc', l:'Obra social',  i:'🏥', t:'pf-os'},
     {k:'tutor',   l:'Tutor',        i:'👨‍👧', t:'pf-tutor'},
     {k:'tel',     l:'Teléfono',     i:'📞', t:'pf-tel'},
+    {k:'domicilio', l:'Domicilio',  i:'🏠', t:'pf-domicilio'},
+    {k:'email',   l:'Email',        i:'📧', t:'pf-email'},
     {k:'diag',    l:'Diagnóstico',  i:'🩺', t:'pf-diag'},
     {k:'antec',   l:'Antecedentes', i:'📋', t:'pf-ant'},
     {k:'notas',   l:'Notas',        i:'📝', t:'pf-notas'},
@@ -5167,18 +5471,23 @@ function launchFreeDictRecognition() {
   freeDictRecognition.continuous = true;
   freeDictRecognition.interimResults = true;
   // Palabra clave para terminar el dictado por voz, sin tener que tocar el
-  // botón "■ Listo" — sólo dispara si la frase completa reconocida es la
-  // palabra clave sola, para no cortar el dictado si aparece en medio de una
-  // frase real (ej. "el diagnóstico está listo").
-  const STOP_WORD = /^(listo|list[ao]s|termin(?:e|é|ado|amos)|finalizar|fin del registro)\.?$/i;
+  // botón "■ Listo". El reconocimiento continuo muchas veces pega "listo" al
+  // final de la frase anterior en el mismo segmento final (ej. "...teléfono
+  // 1122334455 listo"), así que buscamos la palabra clave AL FINAL del
+  // segmento (no exigimos que sea el segmento entero) y la recortamos,
+  // conservando el resto como dato dictado.
+  const STOP_WORD_TRAILING = /\s*\b(listo|list[ao]s|termin(?:e|é|ado|amos)|finalizar|fin del registro)\.?\s*$/i;
   freeDictRecognition.onresult = ev => {
     freeDictAutoRestarts = 0;
     let fin = '', tmp = '', stopRequested = false;
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       if (ev.results[i].isFinal) {
-        const seg = ev.results[i][0].transcript.trim();
-        if (STOP_WORD.test(seg)) stopRequested = true;
-        else fin += seg + ' ';
+        let seg = ev.results[i][0].transcript.trim();
+        if (STOP_WORD_TRAILING.test(seg)) {
+          stopRequested = true;
+          seg = seg.replace(STOP_WORD_TRAILING, '').trim();
+        }
+        if (seg) fin += seg + ' ';
       } else tmp += ev.results[i][0].transcript;
     }
     freeDictTranscript += fin;
@@ -5249,6 +5558,7 @@ function startFreeDictation() {
 
 function stopFreeDictation() {
   freeDictStopping = true;
+  freeDictProcessing = true;
   if (freeDictRecognition) freeDictRecognition.stop();
   else if (freeDictTranscript.trim()) processFreeDictation();
   else resetFreeDictation();
@@ -5260,10 +5570,11 @@ function processFreeDictation() {
   const entities = extractEntities(text);
   applyExtraction(entities);
   showExtractionSummary(entities);
+  freeDictProcessing = false;
 }
 
 function resetFreeDictation() {
-  freeDictStopping = false; freeDictTranscript = ''; freeDictAutoRestarts = 0;
+  freeDictStopping = false; freeDictTranscript = ''; freeDictAutoRestarts = 0; freeDictProcessing = false;
   if (freeDictRecognition) { discardRecognition(freeDictRecognition); freeDictRecognition = null; }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
