@@ -5473,6 +5473,23 @@ function showExtractionSummary(r) {
     ${voiceAgainBtn}`;
 }
 
+// Recorta de `newSegment` cualquier prefijo que ya esté al final de
+// `existingText` (comparando palabra por palabra, sin importar mayúsculas).
+// Existe porque el reconocimiento de voz en mobile reinicia la escucha mucho
+// más seguido que en notebook, y en ese reinicio suele re-transcribir las
+// últimas palabras que ya se habían capturado, duplicándolas o triplicándolas.
+function stripOverlap(existingText, newSegment) {
+  const existWords = existingText.trim().split(/\s+/).filter(Boolean);
+  const newWords = newSegment.trim().split(/\s+/).filter(Boolean);
+  const maxOverlap = Math.min(existWords.length, newWords.length, 8);
+  for (let len = maxOverlap; len > 0; len--) {
+    const tail = existWords.slice(-len).join(' ').toLowerCase();
+    const head = newWords.slice(0, len).join(' ').toLowerCase();
+    if (tail === head) return newWords.slice(len).join(' ');
+  }
+  return newSegment;
+}
+
 function launchFreeDictRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); resetFreeDictation(); return; }
@@ -5497,7 +5514,14 @@ function launchFreeDictRecognition() {
           stopRequested = true;
           seg = seg.replace(STOP_WORD_TRAILING, '').trim();
         }
-        if (seg) fin += seg + ' ';
+        if (seg) {
+          // En celulares el modo "continuo" reinicia la escucha con mucha más
+          // frecuencia que en notebook, y suele repetir las últimas palabras
+          // ya dichas justo en el borde del reinicio — sin esto, esas palabras
+          // quedan duplicadas o hasta triplicadas en el texto acumulado.
+          seg = stripOverlap(freeDictTranscript + fin, seg);
+          if (seg) fin += seg + ' ';
+        }
       } else tmp += ev.results[i][0].transcript;
     }
     freeDictTranscript += fin;
