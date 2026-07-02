@@ -3039,7 +3039,13 @@ function deleteFromView() {
 }
 
 // ===== MODAL HELPERS =====
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  // Si queda una sesión de voz activa (mic o guiado) al cerrar el modal de
+  // paciente, hay que cancelarla — si no, sigue escuchando en segundo plano
+  // y puede terminar escribiendo datos en el próximo paciente que se abra.
+  if (id === 'modal-pac-new') { resetFreeDictation(); stopGuidedVoice(); }
+}
 function closeModalOut(e, id) { if(e.target===document.getElementById(id)) closeModal(id); }
 
 // ===== INFO (logo click) =====
@@ -5135,6 +5141,13 @@ function showExtractionSummary(r) {
   const found   = FIELDS.filter(f => r[f.k]);
   const missing = FIELDS.filter(f => !r[f.k]).map(f=>f.l);
   const chips   = found.map(f=>`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 9px;font-size:11px;color:var(--green);margin:2px">${f.i} <b>${(f.d||String(r[f.k])).slice(0,22)}</b> <span onclick="clearVoiceField('${f.t}', this.parentElement)" title="Borrar campo" style="cursor:pointer;color:var(--red);font-weight:700;padding:0 2px">✕</span></span>`).join('');
+  // La voz se puede reactivar en cualquier momento para completar o corregir:
+  // startFreeDictation() no borra los campos ya cargados, sólo agrega lo que
+  // se detecte en la nueva pasada — por eso el CTA cambia según falte algo o no.
+  const voiceAgainBtn = missing.length
+    ? `<button onclick="startFreeDictation()" style="width:100%;background:var(--blue2);border:none;border-radius:var(--radius-sm);padding:9px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif">🎤 Seguir dictando — decí sólo lo que falta</button>
+       <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:4px">Los ${found.length} campo${found.length!==1?'s':''} ya cargado${found.length!==1?'s':''} no se pierden</div>`
+    : `<button onclick="startFreeDictation()" style="width:100%;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:var(--radius-sm);padding:7px;font-size:12px;color:var(--blue2);cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Redictar para corregir algo</button>`;
   banner.style.display = 'block';
   banner.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -5142,8 +5155,8 @@ function showExtractionSummary(r) {
       <button onclick="resetFreeDictation()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1">✕</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">${chips}</div>
-    ${missing.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Sin detectar: ${missing.join(', ')} — completá manualmente</div>` : ''}
-    <button onclick="startFreeDictation()" style="width:100%;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:var(--radius-sm);padding:7px;font-size:12px;color:var(--blue2);cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Redictar</button>`;
+    ${missing.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Sin detectar: ${missing.join(', ')} — decilos por voz o completalos a mano</div>` : ''}
+    ${voiceAgainBtn}`;
 }
 
 function launchFreeDictRecognition() {
@@ -5153,16 +5166,25 @@ function launchFreeDictRecognition() {
   freeDictRecognition.lang = 'es-AR';
   freeDictRecognition.continuous = true;
   freeDictRecognition.interimResults = true;
+  // Palabra clave para terminar el dictado por voz, sin tener que tocar el
+  // botón "■ Listo" — sólo dispara si la frase completa reconocida es la
+  // palabra clave sola, para no cortar el dictado si aparece en medio de una
+  // frase real (ej. "el diagnóstico está listo").
+  const STOP_WORD = /^(listo|list[ao]s|termin(?:e|é|ado|amos)|finalizar|fin del registro)\.?$/i;
   freeDictRecognition.onresult = ev => {
     freeDictAutoRestarts = 0;
-    let fin = '', tmp = '';
+    let fin = '', tmp = '', stopRequested = false;
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      if (ev.results[i].isFinal) fin += ev.results[i][0].transcript + ' ';
-      else tmp += ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) {
+        const seg = ev.results[i][0].transcript.trim();
+        if (STOP_WORD.test(seg)) stopRequested = true;
+        else fin += seg + ' ';
+      } else tmp += ev.results[i][0].transcript;
     }
     freeDictTranscript += fin;
     const el = document.getElementById('live-transcript');
     if (el) el.textContent = (freeDictTranscript + tmp).trim();
+    if (stopRequested) stopFreeDictation();
   };
   freeDictRecognition.onerror = ev => {
     // Errores recuperables (silencio, corte de red, stop() propio): dejamos que
@@ -5202,7 +5224,7 @@ function launchFreeDictRecognition() {
 function startFreeDictation() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
-  if (freeDictRecognition) { freeDictRecognition.stop(); freeDictRecognition = null; }
+  if (freeDictRecognition) { discardRecognition(freeDictRecognition); freeDictRecognition = null; }
   freeDictTranscript = ''; freeDictStopping = false; freeDictAutoRestarts = 0;
   const btn = document.getElementById('btn-free-voice');
   const guided = document.getElementById('btn-guided-voice');
@@ -5220,7 +5242,7 @@ function startFreeDictation() {
         </div>
         <button onclick="stopFreeDictation()" style="background:var(--red);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">■ Listo</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Decí directamente los datos, sin nombrar el campo (ej. "Javier Vasquez, 12 años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...")</div>`;
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Decí directamente los datos, sin nombrar el campo (ej. "Javier Vasquez, 12 años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...") · Decí <b>"listo"</b> o tocá el botón para terminar</div>`;
   }
   launchFreeDictRecognition();
 }
@@ -5242,7 +5264,7 @@ function processFreeDictation() {
 
 function resetFreeDictation() {
   freeDictStopping = false; freeDictTranscript = ''; freeDictAutoRestarts = 0;
-  if (freeDictRecognition) { freeDictRecognition.stop(); freeDictRecognition = null; }
+  if (freeDictRecognition) { discardRecognition(freeDictRecognition); freeDictRecognition = null; }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
   const btn    = document.getElementById('btn-free-voice');
@@ -5257,6 +5279,8 @@ let voiceFlowStep = -1;
 
 const VOICE_FLOW = [
   { id: 'pf-nombre',    q: 'Apellido y nombre del paciente',                   type: 'text' },
+  { id: 'pf-dni',       q: 'DNI del paciente',                                 type: 'dni' },
+  { id: 'pf-sexo',      q: 'Sexo: masculino, femenino, u otro',                type: 'sexo' },
   { id: 'pf-fnac',      q: 'Fecha de nacimiento. Por ejemplo: quince de marzo de dos mil veintidós', type: 'date' },
   { id: 'pf-os',        q: 'Obra social',                                      type: 'text' },
   { id: 'pf-domicilio', q: 'Domicilio',                                        type: 'text' },
@@ -5267,17 +5291,43 @@ const VOICE_FLOW = [
   { id: 'pf-notas',     q: 'Notas clínicas',                                   type: 'text' },
 ];
 
+// Convierte números en palabras ("quince", "dos mil veintidós") a dígitos.
+// La Web Speech API en es-AR no siempre transcribe los números dichos en el
+// ejemplo del dictado guiado como dígitos, así que el parser de fecha tiene
+// que entender ambas formas.
+const NUM_WORDS = {
+  cero:0, un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9,
+  diez:10, once:11, doce:12, trece:13, catorce:14, quince:15,
+  dieciseis:16, diecisiete:17, dieciocho:18, diecinueve:19,
+  veinte:20, veintiuno:21, veintiun:21, veintidos:22, veintitres:23, veinticuatro:24, veinticinco:25,
+  veintiseis:26, veintisiete:27, veintiocho:28, veintinueve:29,
+  treinta:30, treintaiuno:31, cuarenta:40, cincuenta:50, sesenta:60, setenta:70, ochenta:80, noventa:90,
+  cien:100, ciento:100, doscientos:200, trescientos:300, cuatrocientos:400, quinientos:500,
+  seiscientos:600, setecientos:700, ochocientos:800, novecientos:900, mil:1000,
+};
+function wordsToNumber(str) {
+  const tokens = str.trim().split(/\s+/).filter(t => t && t !== 'y' && t !== 'del' && t !== 'de');
+  if (!tokens.length) return null;
+  let total = 0, current = 0;
+  for (const t of tokens) {
+    const v = NUM_WORDS[t];
+    if (v === undefined) return null;
+    if (v === 1000) current = (current || 1) * 1000;
+    else current += v;
+  }
+  return (total + current) || null;
+}
 function parseVoiceDate(text) {
   const MESES = { enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12 };
-  const m = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
-    .match(/(\d{1,2})\s+de\s+(\w+)\s+(?:de\s+)?(\d{4})/);
-  if (m) {
-    const day = m[1].padStart(2,'0');
-    const month = String(MESES[m[2]] || '').padStart(2,'0');
-    const year = m[3];
-    if (month !== '00') return `${year}-${month}-${day}`;
-  }
-  return null;
+  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const m = norm.match(/^\s*(.+?)\s+de\s+(\w+)\s+(?:de|del)?\s*(.+?)\s*$/);
+  if (!m) return null;
+  const [, dayRaw, monthWord, yearRaw] = m;
+  const day   = /^\d+$/.test(dayRaw)  ? parseInt(dayRaw)  : wordsToNumber(dayRaw);
+  const month = MESES[monthWord];
+  const year  = /^\d+$/.test(yearRaw) ? parseInt(yearRaw) : wordsToNumber(yearRaw);
+  if (!day || !month || !year || day < 1 || day > 31 || year < 1900 || year > 2100) return null;
+  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
 
 function speak(text, onEnd) {
@@ -5328,10 +5378,23 @@ function updateVoiceFlowBanner() {
   if (el) { el.style.outline='2px solid var(--blue2)'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
 }
 
+// Descarta una instancia de reconocimiento de voz que ya no nos interesa.
+// stop() dispara 'end' de forma asíncrona (a veces con demora real en el
+// navegador); si no se desconectan los handlers antes, ese 'end' tardío
+// puede llegar DESPUÉS de que ya se creó una instancia nueva y pisar la
+// referencia global de la nueva instancia (dejándola huérfana, escuchando
+// en segundo plano sin que nada la controle — la causa real de que el
+// dictado por voz pareciera "arruinar" el registro que se estaba editando).
+function discardRecognition(rec) {
+  if (!rec) return;
+  rec.onend = null; rec.onresult = null; rec.onerror = null;
+  try { rec.stop(); } catch(_) {}
+}
+
 function voiceFlowCapture() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR || voiceFlowStep < 0) return;
-  if (voiceRecognition) { voiceRecognition.stop(); voiceRecognition = null; }
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   const step = VOICE_FLOW[voiceFlowStep];
   voiceRecognition = new SR();
   voiceRecognition.lang = 'es-AR';
@@ -5343,7 +5406,7 @@ function voiceFlowCapture() {
   const safetyTimer = setTimeout(() => {
     if (advanced) return;
     advanced = true;
-    if (voiceRecognition) { try { voiceRecognition.stop(); } catch(_) {} voiceRecognition = null; }
+    if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
     showToast('No se escuchó nada, continuando...');
     voiceFlowNext();
   }, 12000);
@@ -5357,8 +5420,26 @@ function voiceFlowCapture() {
     if (el) {
       if (step.type === 'date') {
         const d = parseVoiceDate(text);
-        if (d) { el.value = d; }
+        if (d) { el.value = d; el.dispatchEvent(new Event('input')); }
         else { showToast('No entendí la fecha — completala manualmente'); }
+      } else if (step.type === 'dni') {
+        let digits = (text.match(/\d/g) || []).join('');
+        if (digits.length < 6) {
+          // A veces el DNI se dicta dígito por dígito en palabras ("uno dos tres...")
+          const tl = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+          const wordDigits = tl.split(/\s+/).map(w => (w in NUM_WORDS && NUM_WORDS[w] <= 9) ? String(NUM_WORDS[w]) : '').join('');
+          if (wordDigits.length >= 6) digits = wordDigits;
+        }
+        if (digits.length >= 6) { el.value = digits; el.dispatchEvent(new Event('input')); }
+        else { showToast('No entendí el DNI — completalo manualmente'); }
+      } else if (step.type === 'sexo') {
+        const tl = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        let sexo = '';
+        if (/femenino|nena|ni[ñn]a|mujer/.test(tl)) sexo = 'Femenino';
+        else if (/masculino|nene|ni[ñn]o|var[oó]n/.test(tl)) sexo = 'Masculino';
+        else if (/otro/.test(tl)) sexo = 'Otro';
+        if (sexo) { el.value = sexo; el.dispatchEvent(new Event('input')); }
+        else { showToast('No entendí el sexo — completalo manualmente'); }
       } else {
         el.value = text;
         el.dispatchEvent(new Event('input'));
@@ -5396,13 +5477,14 @@ function startGuidedVoice() {
   const btn = document.getElementById('btn-guided-voice');
   if (btn) btn.style.display = 'none';
   updateVoiceFlowBanner();
-  speak('Vamos a cargar un nuevo paciente. ' + VOICE_FLOW[0].q, voiceFlowCapture);
+  const intro = editingId ? 'Vamos a editar los datos del paciente. ' : 'Vamos a cargar un nuevo paciente. ';
+  speak(intro + VOICE_FLOW[0].q, voiceFlowCapture);
 }
 
 function stopGuidedVoice() {
   voiceFlowStep = -1;
   speechSynthesis.cancel();
-  if (voiceRecognition) { voiceRecognition.stop(); voiceRecognition = null; }
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
   const btn = document.getElementById('btn-guided-voice');
@@ -5413,7 +5495,7 @@ function stopGuidedVoice() {
 function startVoice(targetId) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
-  if (voiceRecognition) { voiceRecognition.stop(); voiceRecognition = null; }
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   const el = document.getElementById(targetId);
   if (!el) return;
   voiceRecognition = new SpeechRecognition();
