@@ -219,6 +219,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
 
 /* Header logo + profile button */
 .header-logo-img{height:32px;border-radius:6px;object-fit:contain;flex-shrink:0}
+.header-logo-icon{height:32px;width:32px;display:flex;align-items:center;justify-content:center;font-size:20px;border-radius:8px;background:var(--surface2);cursor:pointer;flex-shrink:0}
 .header-right{display:flex;align-items:center;gap:10px}
 .profile-btn{background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent}
 .profile-avatar{width:30px;height:30px;border-radius:50%;background:var(--surface);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--blue2)}
@@ -383,7 +384,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
           <div class="profile-avatar" id="profile-avatar">?</div>
         </button>
         <button class="logout-btn" onclick="lockApp()" title="Cerrar sesión">🔒</button>
-        <img src="logo.jpeg" class="header-logo-img" alt="Synapsis" style="cursor:pointer" onclick="openInfoModal()" title="Información de la app" onerror="this.style.display='none'"/>
+        <div class="header-logo-icon" onclick="openInfoModal()" title="Información de la app">🩺</div>
       </div>
     </div>
     <div class="subtitle">Consultorios Pediátricos Particulares</div>
@@ -739,11 +740,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
       <label class="form-label">Rol</label>
       <select class="form-input" id="prof-rol">
         <option value="Medico">Médico</option>
-        <option value="Residente">Residente</option>
-        <option value="Enfermero">Enfermero/a</option>
-        <option value="Jefe">Jefe de Servicio</option>
         <option value="Administrativo">Administrativo</option>
-        <option value="Proveedor">Proveedor</option>
       </select>
     </div>
     <button class="btn-primary" onclick="saveProfile()">Guardar perfil</button>
@@ -774,12 +771,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
 <div class="modal-overlay" id="modal-info" onclick="closeModalOut(event,'modal-info')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <div class="modal-title">Synapsis</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:20px;text-align:center">H. de Niños La Plata · Neurocirugía</div>
+    <div class="modal-title">PediConsult</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:20px;text-align:center">Consultorios Pediátricos Particulares</div>
     <button onclick="openInfoSection('uso')" style="display:flex;align-items:center;gap:14px;width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:16px;cursor:pointer;margin-bottom:10px;text-align:left">
       <span style="font-size:26px">📋</span>
       <div>
-        <div style="font-size:15px;font-weight:600;color:var(--text)">¿Cómo funciona Synapsis?</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">¿Cómo funciona PediConsult?</div>
         <div style="font-size:12px;color:var(--text3);margin-top:2px">Guía de uso para el equipo</div>
       </div>
       <span style="margin-left:auto;color:var(--text3);font-size:18px">›</span>
@@ -877,7 +874,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     </p>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px">
       <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.8px">Nombre de cuenta</div>
-      <div style="font-size:13px;color:var(--text)">Synapsis</div>
+      <div style="font-size:13px;color:var(--text)">PediConsult</div>
       <div style="font-size:10px;color:var(--text3);margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.8px">Clave de configuración</div>
       <div id="totp-secret-display" style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:var(--blue2);letter-spacing:2px;word-break:break-all"></div>
     </div>
@@ -1326,8 +1323,11 @@ function pinReset() {
   document.getElementById('pin-error').textContent=''; document.getElementById('pin-reset-btn').style.display='none';
 }
 // ===== PERFIL / ROLES / AUTH =====
-const ROLE_LEVEL = { 'Jefe': 3, 'Medico': 2, 'Residente': 2, 'Enfermero': 1, 'Administrativo': 1, 'Proveedor': 0 };
-function roleLevel() { return ROLE_LEVEL[userProfile.rol] ?? 2; }
+// Sólo 2 roles en esta versión: Médico (acceso completo, incluye herramientas
+// de administración) y Administrativo (carga/consulta, sin herramientas de
+// mantenimiento de datos).
+const ROLE_LEVEL = { 'Medico': 3, 'Administrativo': 1 };
+function roleLevel() { return ROLE_LEVEL[userProfile.rol] ?? 3; }
 function canSee(minLevel) { return roleLevel() >= minLevel; }
 function isAdmin() { return roleLevel() >= 3; }
 
@@ -3306,60 +3306,52 @@ function closeModalOut(e, id) { if(e.target===document.getElementById(id)) close
 // ===== INFO (logo click) =====
 const INFO_CONTENT = {
   uso: {
-    title: '¿Cómo funciona Synapsis?',
+    title: '¿Cómo funciona PediConsult?',
     html: `
-<h3 style="color:var(--blue2);margin:0 0 6px">¿Qué es Synapsis?</h3>
-<p>La aplicación del servicio para registrar y consultar toda la información clínica: cirugías, pacientes, seguimientos e insumos. Funciona desde el celular, la tablet o la computadora, sin instalar nada.</p>
+<h3 style="color:var(--blue2);margin:0 0 6px">¿Qué es PediConsult?</h3>
+<p>Es la app para llevar el consultorio pediátrico: los datos de cada paciente, cuándo le toca cada vacuna, cuándo le toca el próximo control, y todo esto se puede cargar hablando, sin tener que tipear. Funciona desde el celular, la tablet o la computadora, sin instalar nada especial.</p>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">Primeros pasos</h3>
-<p><strong>Acceso:</strong> la primera vez que abrís la app, creás un PIN de 4 dígitos. Ese PIN te lo van a pedir cada vez que entres.</p>
-<p><strong>Si olvidás el PIN:</strong> tocá "Olvidé mi PIN" en la pantalla de acceso. Se borra el PIN y la app queda lista para crear uno nuevo. Los datos no se pierden.</p>
-<p><strong>Tu perfil:</strong> al entrar te pedimos nombre, apellido y rol. Podés editarlo tocando tu avatar en la parte superior.</p>
+<p><strong>Acceso:</strong> la primera vez que abrís la app, creás un PIN de 4 dígitos. Ese PIN te lo va a pedir cada vez que entres, para que nadie más pueda ver los datos de tus pacientes.</p>
+<p><strong>Si olvidás el PIN:</strong> tocá "Olvidé mi PIN" en la pantalla de acceso. Se borra el PIN y la app queda lista para crear uno nuevo. Los datos de los pacientes no se pierden.</p>
+<p><strong>Tu perfil:</strong> tocando tu avatar (arriba a la derecha) podés cargar tu nombre y elegir si sos <strong>Médico</strong> o <strong>Administrativo</strong>. El rol Médico tiene acceso a todo; Administrativo es para quien ayuda con la carga de datos.</p>
 <p><strong>Cerrar sesión:</strong> tocá el candado 🔒 en la esquina superior derecha.</p>
 
-<h3 style="color:var(--blue2);margin:18px 0 6px">🔪 Cirugías</h3>
-<p>El registro completo de todas las intervenciones del servicio desde 2018 (más de 1.100 cirugías).</p>
-<ul style="padding-left:18px;margin:6px 0">
-  <li>Buscá por nombre, diagnóstico, procedimiento o historia clínica.</li>
-  <li>Filtrá por rango de fechas o cirujano.</li>
-  <li>Agregá una cirugía nueva con el botón <strong>+</strong>.</li>
-  <li>Editá o eliminá tocando cualquier cirugía de la lista.</li>
-</ul>
+<h3 style="color:var(--blue2);margin:18px 0 6px">🏠 Home</h3>
+<p>La pantalla principal: cuántos pacientes tenés cargados, cuántos están activos y cuántos ya recibieron el alta. Accesos directos para ir a Pacientes, Vacunas, Controles o cargar un paciente nuevo.</p>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">👤 Pacientes</h3>
-<p>La ficha de cada paciente: datos personales, diagnóstico, historia quirúrgica completa y archivos adjuntos.</p>
+<p>Acá está la ficha de cada chico: datos personales, del padre/madre/tutor, obra social, diagnóstico y antecedentes.</p>
 <ul style="padding-left:18px;margin:6px 0">
-  <li>Buscá por nombre, HC o diagnóstico.</li>
-  <li>Filtrá por estado: Activo, En seguimiento, Alta, Fallecido.</li>
-  <li>Al tocar un paciente ves su ficha completa con todos los archivos adjuntos.</li>
-  <li>Creá un perfil nuevo con el botón <strong>+</strong>.</li>
-  <li>Adjuntá imágenes de estudios (RMN, TAC, labs) directamente desde el formulario.</li>
+  <li>Buscá por nombre, DNI u obra social.</li>
+  <li>Filtrá por estado: Activo o Alta.</li>
+  <li>Tocá <strong>+</strong> para cargar un paciente nuevo, o abrí cualquier ficha para editarla.</li>
+  <li>Adjuntá estudios, análisis o cualquier archivo directamente desde el formulario.</li>
+</ul>
+<p><strong>Carga por voz:</strong> en vez de tipear, podés tocar el micrófono y decir los datos en voz alta. Hay dos formas:</p>
+<ul style="padding-left:18px;margin:6px 0">
+  <li><strong>🎤 Hablar libremente:</strong> decís todos los datos seguidos ("Javier Vasquez, doce años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...") y la app detecta cada dato y lo carga en el campo que corresponde. Al terminar, mostrás en verde lo que se cargó bien; lo que falte podés completarlo a mano o volver a dictarlo. Se puede terminar el dictado tocando "■ Listo" o directamente diciendo la palabra <strong>"listo"</strong>.</li>
+  <li><strong>Dictado guiado:</strong> la app te va preguntando campo por campo (nombre, DNI, sexo, fecha de nacimiento, etc.) y vos respondés de a uno. Es más lento pero más ordenado.</li>
 </ul>
 
-<h3 style="color:var(--blue2);margin:18px 0 6px">📅 Seguimientos</h3>
-<p>La agenda de controles pendientes, ordenados por fecha de próximo control. Los vencidos aparecen en rojo. Solo lectura.</p>
+<h3 style="color:var(--blue2);margin:18px 0 6px">💉 Vacunas</h3>
+<p>Elegís un paciente de la lista y la app calcula sola, según su fecha de nacimiento, qué vacunas le corresponden en 2026, con la fecha estipulada y cuánto tiempo le queda (o si ya está atrasada). Más abajo también está la lista general de vacunas pendientes de todos los pacientes.</p>
 
-<h3 style="color:var(--blue2);margin:18px 0 6px">📦 Stock</h3>
-<p>El inventario de insumos del servicio.</p>
-<ul style="padding-left:18px;margin:6px 0">
-  <li>Estado por insumo: <strong>Pendiente</strong> (gris) · <strong>En proceso</strong> (amarillo) · <strong>Completa</strong> (verde).</li>
-  <li>Podés adjuntar remitos o fotos a cada registro.</li>
-  <li>Al editar un registro, los archivos anteriores no se borran: los nuevos se agregan.</li>
-</ul>
+<h3 style="color:var(--blue2);margin:18px 0 6px">📅 Controles</h3>
+<p>Igual que Vacunas, pero para los controles médicos de rutina: elegís un paciente y la app calcula los próximos controles según su edad (cada 7/14/30 días de recién nacido, mensual el primer año, y así según corresponda).</p>
 
-<h3 style="color:var(--blue2);margin:18px 0 6px">📊 Estadísticas</h3>
-<p>Vista analítica del historial quirúrgico con filtros por texto y fecha. Se actualiza automáticamente al registrar nuevas cirugías. No disponible para el rol Enfermero/Administrativo.</p>
+<h3 style="color:var(--blue2);margin:18px 0 6px">🗓️ Calendario</h3>
+<p>La tabla completa y oficial del Calendario Nacional de Vacunación 2026 del Ministerio de Salud, para consultar cualquier duda puntual sobre una vacuna.</p>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">Archivos adjuntos</h3>
 <ul style="padding-left:18px;margin:6px 0">
   <li>Formatos: JPG, PNG, PDF, DOC.</li>
   <li>Podés subir varios archivos a la vez.</li>
   <li>Los archivos anteriores nunca se borran al agregar nuevos.</li>
-  <li>Las imágenes se muestran en miniatura; los documentos, como links para abrir.</li>
 </ul>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">Funciona sin conexión</h3>
-<p>Si perdés señal o el wifi falla, la app sigue funcionando con los últimos datos cargados. Cuando volvés a tener conexión, sincroniza automáticamente. Una barra amarilla avisa cuando estás viendo datos en caché.</p>
+<p>Si perdés señal o el wifi falla, la app sigue funcionando con los últimos datos cargados. Cuando volvés a tener conexión, sincroniza automáticamente.</p>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">Instalación en el celular</h3>
 <p><strong>iPhone:</strong> Safari → botón Compartir → "Añadir a pantalla de inicio".<br>
@@ -3369,56 +3361,71 @@ const INFO_CONTENT = {
   mejoras: {
     title: '¿Cómo se puede mejorar?',
     html: `
-<p style="color:var(--text3);font-size:13px;margin-bottom:20px">Synapsis está en producción y en uso. Lo que sigue son las mejoras con mayor impacto identificadas, ordenadas por facilidad de implementación.</p>
+<p style="color:var(--text3);font-size:13px;margin-bottom:20px">PediConsult ya resuelve lo esencial: carga de pacientes por voz, calendario de vacunación nacional 2026 con cálculo de atrasos, y seguimiento de controles. Esto es hacia dónde puede crecer.</p>
 
 <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
   <div style="font-size:12px;font-weight:700;color:var(--teal);letter-spacing:0.5px;margin-bottom:4px">⭐ PRIORIDAD ALTA · BAJA COMPLEJIDAD</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Resumen automático del paciente con IA</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">Al abrir la ficha de un paciente, el sistema genera en segundos un párrafo con toda su historia clínica: diagnósticos, cirugías, estado actual y seguimientos pendientes. Útil para pase de guardia y consultas ambulatorias.</p>
-</div>
-
-<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:700;color:var(--teal);letter-spacing:0.5px;margin-bottom:4px">⭐ PRIORIDAD ALTA · BAJA COMPLEJIDAD</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Informe mensual automático por email</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">El primer día de cada mes, el sistema envía al jefe de servicio un resumen con cirugías del mes, distribución por complejidad, nuevos pacientes, seguimientos pendientes e insumos con stock bajo. Sin configuración extra en la app.</p>
+  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Digitalización de fichas en papel o Excel</h3>
+  <p style="margin:0;font-size:13px;color:var(--text2)">Poder subir fichas viejas en papel (foto) o planillas de Excel y que se conviertan automáticamente en registros de pacientes dentro de PediConsult, sin tener que tipear todo de nuevo a mano.</p>
 </div>
 
 <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
   <div style="font-size:12px;font-weight:700;color:var(--teal);letter-spacing:0.5px;margin-bottom:4px">⭐ PRIORIDAD ALTA · BAJA COMPLEJIDAD</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Alerta automática de stock crítico</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">Cuando la cantidad de un insumo cae por debajo de un umbral, se envía automáticamente un email o WhatsApp al responsable de compras. Configurable desde Airtable sin tocar el código.</p>
+  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Alertas a pacientes por WhatsApp</h3>
+  <p style="margin:0;font-size:13px;color:var(--text2)">Integración para enviar recordatorios automáticos por WhatsApp a las familias (vacunas próximas, controles pendientes), sin que el médico tenga que escribir uno por uno.</p>
 </div>
 
-<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:700;color:var(--blue2);letter-spacing:0.5px;margin-bottom:4px">PRIORIDAD MEDIA</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Recordatorios automáticos por WhatsApp</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">48 horas antes de un control, el sistema envía un WhatsApp automático al tutor del paciente. Costo estimado: menos de $5 por mes para el volumen del servicio.</p>
+<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:18px;margin:24px 0 12px">
+  <div style="font-size:16px;font-weight:700;color:var(--text)">De gestor de pacientes a copiloto del consultorio pediátrico</div>
+  <div style="font-size:12px;color:var(--text3);margin-top:4px">Propuesta de expansión funcional con IA</div>
 </div>
 
-<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:700;color:var(--blue2);letter-spacing:0.5px;margin-bottom:4px">PRIORIDAD MEDIA</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Dictado de voz para registrar cirugías</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">El cirujano habla 30 segundos al salir del quirófano. La app transcribe y completa el formulario automáticamente. Elimina prácticamente toda la carga administrativa post-quirúrgica.</p>
-</div>
+<p><strong>El punto de partida.</strong> Hoy la app ya resuelve lo esencial: carga de pacientes por voz, calendario de vacunación nacional 2026 con contador de atrasos, y seguimiento de pacientes. Es una base sólida.</p>
+<p>La pregunta que guía esta propuesta es otra: ¿qué pasaría si esta app dejara de ser un lugar donde el médico carga información, y empezara a ser un lugar que le devuelve tiempo, criterio clínico y tranquilidad?</p>
+<p>Para eso, pensamos la evolución en cuatro capas. Cada una construye sobre la anterior, y cada una ataca un dolor real de la práctica pediátrica diaria.</p>
 
-<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:700;color:var(--blue2);letter-spacing:0.5px;margin-bottom:4px">PRIORIDAD MEDIA</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Alertas priorizadas de seguimiento</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">Los seguimientos se ordenan por urgencia clínica real, no solo por fecha. Un paciente oncológico sin control hace 45 días aparece antes que un control de rutina demorado 10 días.</p>
-</div>
+<h3 style="color:var(--blue2);margin:20px 0 8px">Capa 1 — Copiloto Clínico</h3>
+<p style="font-style:italic;color:var(--text2)">"Que la consulta se documente sola, mientras el médico mira al paciente y no a la pantalla."</p>
+<ul style="padding-left:18px;margin:6px 0">
+  <li><strong>Nota clínica automática (SOAP):</strong> el médico dicta o conversa naturalmente durante la consulta, y la IA transcribe y estructura automáticamente motivo de consulta, examen físico, diagnóstico e indicaciones. Cierra la consulta con un clic, no con diez minutos de tipeo.</li>
+  <li><strong>Curvas de crecimiento inteligentes:</strong> carga de peso, talla y perímetro cefálico graficados automáticamente contra percentilos OMS/SAP, con alertas cuando un paciente se desvía de su curva histórica.</li>
+  <li><strong>Checklist de desarrollo madurativo:</strong> hitos motores, de lenguaje y sociales esperados por edad, con alertas tempranas de posible retraso.</li>
+  <li><strong>Calculadora de dosis pediátrica por peso:</strong> con chequeo automático de rangos seguros, reduciendo el margen de error humano en la prescripción.</li>
+  <li><strong>Apoyo a diagnóstico diferencial:</strong> sugerencias basadas en síntomas cargados y guías pediátricas locales — siempre como apoyo, nunca como reemplazo del criterio médico.</li>
+</ul>
 
-<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:700;color:var(--blue2);letter-spacing:0.5px;margin-bottom:4px">PRIORIDAD MEDIA</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Seguimiento post-operatorio automático</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">Al registrar una cirugía, el sistema crea automáticamente un seguimiento a 30 días. El recordatorio queda agendado sin que nadie tenga que acordarse.</p>
-</div>
+<h3 style="color:var(--blue2);margin:20px 0 8px">Capa 2 — Vacunación de Próxima Generación</h3>
+<p style="font-style:italic;color:var(--text2)">"El contador de atrasos ya funciona. Ahora que la vacuna se aplique antes de que haga falta preguntar."</p>
+<ul style="padding-left:18px;margin:6px 0">
+  <li><strong>Priorización predictiva:</strong> la app identifica proactivamente qué pacientes entran en zona de riesgo esta semana, sin que el médico tenga que revisarlos uno por uno.</li>
+  <li><strong>Recordatorios automáticos a las familias</strong> por WhatsApp/SMS, antes de que el atraso ocurra.</li>
+  <li><strong>Certificados de vacunación con QR,</strong> autogenerados en PDF, listos para colegios o trámites.</li>
+  <li><strong>Vacunación ampliada:</strong> además del calendario oficial, sugerencia de vacunas recomendadas no incluidas (conjugadas, meningo B, etc.), como valor agregado del consultorio.</li>
+</ul>
 
-<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:0.5px;margin-bottom:4px">PLAZO MAYOR</div>
-  <h3 style="color:var(--text);margin:0 0 8px;font-size:15px">Búsqueda inteligente · Consultas en lenguaje natural</h3>
-  <p style="margin:0;font-size:13px;color:var(--text2)">Buscar "tumor de fosa posterior" y encontrar resultados con "meduloblastoma" o "astrocitoma". O preguntar directamente: "¿cuántas cirugías de guardia hizo el servicio este trimestre?" y obtener la respuesta sin filtros.</p>
-</div>
+<h3 style="color:var(--blue2);margin:20px 0 8px">Capa 3 — Canal Inteligente con las Familias</h3>
+<p style="font-style:italic;color:var(--text2)">"El mayor ladrón de tiempo de un pediatra es el WhatsApp personal a las 11 de la noche. Esta capa se lo devuelve."</p>
+<ul style="padding-left:18px;margin:6px 0">
+  <li><strong>Portal/app para padres</strong> con recordatorios automáticos de vacunas y controles.</li>
+  <li><strong>Chatbot con IA de primera línea:</strong> responde preguntas frecuentes (fiebre, sueño, alimentación) con criterio pediátrico validado, y escala al médico sólo lo que realmente lo necesita.</li>
+  <li><strong>Educación personalizada por edad:</strong> mensajes automáticos tipo "tu bebé cumple 6 meses, esto es lo que viene", que refuerzan el vínculo entre consultas sin esfuerzo del médico.</li>
+</ul>
 
+<h3 style="color:var(--blue2);margin:20px 0 8px">Capa 4 — Inteligencia del Consultorio</h3>
+<p style="font-style:italic;color:var(--text2)">"Lo que convierte una app útil en una app imprescindible: que también cuide el negocio."</p>
+<ul style="padding-left:18px;margin:6px 0">
+  <li><strong>Dashboard de indicadores:</strong> pacientes activos, adherencia a vacunación, consultas mensuales, tasa de ausentismo.</li>
+  <li><strong>Confirmación automática de turnos</strong> por WhatsApp, con impacto directo en la reducción de ausentismo (y por lo tanto, en los ingresos).</li>
+  <li><strong>Exportación simple</strong> a facturación/obra social.</li>
+</ul>
+
+<h3 style="color:var(--blue2);margin:20px 0 8px">El horizonte — Funcionalidades "wow"</h3>
+<p style="font-style:italic;color:var(--text2)">Para cuando el consultorio esté listo para dar el salto disruptivo.</p>
+<ul style="padding-left:18px;margin:6px 0">
+  <li><strong>Modo consulta 100% por voz:</strong> el médico dicta toda la consulta y al finalizar la IA entrega nota clínica, receta e indicaciones para los padres en lenguaje simple — todo en un solo flujo, sin tocar el teclado.</li>
+  <li><strong>Apoyo visual por imagen:</strong> análisis de fotos de erupciones cutáneas comunes como apoyo diagnóstico, con disclaimer claro de que no reemplaza el diagnóstico presencial.</li>
+  <li><strong>Red epidemiológica entre consultorios:</strong> alertas locales tempranas (ej. brote de bronquiolitis en la zona), si el producto escala a múltiples consultorios.</li>
+</ul>
 `
   }
 };
@@ -3778,7 +3785,7 @@ function checkSeguimientosNotif(pendientes) {
     return p && new Date(p+'T12:00:00') < hoy;
   });
   if (vencidos.length > 0) {
-    new Notification('Synapsis · Seguimientos', {
+    new Notification('PediConsult · Seguimientos', {
       body: `${vencidos.length} seguimiento${vencidos.length>1?'s':''} vencido${vencidos.length>1?'s':''}`,
       icon: '/icon-192.png',
       tag: 'seg-vencidos'
@@ -4285,7 +4292,7 @@ function exportarPaseDoc(){
     +'b{font-weight:bold}'
     +'</style></head><body>'
     +'<h2>Pase de sala &mdash; '+fecha+'</h2>'
-    +'<p>Synapsis &middot; H. de Ni&ntilde;os La Plata &middot; Neurocirug&iacute;a Pedi&aacute;trica</p>'
+    +'<p>PediConsult &middot; Consultorios Pedi&aacute;tricos Particulares</p>'
     +'<table><thead><tr>'
     +'<th width="20%">PACIENTE</th>'
     +'<th width="22%">EXAMEN F&Iacute;SICO</th>'
@@ -4319,7 +4326,7 @@ const TABS_CONFIG = [
   {id:'dash',  label:'Stats'},
   {id:'pase',  label:'Pase de guardia'},
 ];
-const ROLES_CONFIG = ['Jefe','Medico','Residente','Enfermero','Administrativo','Proveedor'];
+const ROLES_CONFIG = ['Medico','Administrativo'];
 
 function openAdminPermsPanel() {
   closeModal('modal-perfil');
@@ -5183,7 +5190,7 @@ function openTotpSetup() {
   totpPendingSecret = totpNewSecret();
   const formatted = totpPendingSecret.replace(/(.{4})/g,'$1 ').trim();
   const user = encodeURIComponent([userProfile.nombre, userProfile.apellido].filter(Boolean).join(' ') || 'Usuario');
-  const otpUrl = `otpauth://totp/Synapsis:${user}?secret=${totpPendingSecret}&issuer=Synapsis`;
+  const otpUrl = `otpauth://totp/PediConsult:${user}?secret=${totpPendingSecret}&issuer=PediConsult`;
   document.getElementById('totp-secret-display').textContent = formatted;
   document.getElementById('totp-otp-url').textContent = otpUrl;
   document.getElementById('totp-verify-code').value = '';
@@ -5336,15 +5343,18 @@ function extractEntities(text) {
     if (tl.includes(norm(os))) { r.obraSoc = os; break; }
   }
 
-  // Tutor — después de keyword familiar
-  const tutorM = text.match(/(?:mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)[:\s]+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){0,2})/i);
-  if (tutorM) r.tutor = tutorM[1].trim();
-
   // Al dictar de corrido (sin comas/puntos, como suele transcribir la Web
   // Speech API) hay que cortar cada campo de texto libre apenas empieza la
   // palabra-clave del campo siguiente, si no se "come" todo el resto.
   const NEXT_FIELD_KW = /\b(antecedentes?|notas(?:\s+cl[ií]nicas?)?|tratamiento|tto|medicaci[oó]n|observaci[oó]n|obs|diagn[oó]stico|dx|dni|tel[eé]fono|celular|cel|domicilio|direcci[oó]n|correo(?:\s+electr[oó]nico)?|e[\s-]?mail|mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)\b/i;
   const trimToNextField = s => s.split(NEXT_FIELD_KW)[0].trim();
+
+  // Tutor — después de keyword familiar. El regex puede capturar hasta 2
+  // palabras capitalizadas de más; si la próxima de la lista es otra palabra
+  // clave (típicamente "teléfono", que la Web Speech API suele capitalizar),
+  // hay que cortarla — si no, el tutor queda con "Ana Gómez Teléfono" pegado.
+  const tutorM = text.match(/(?:mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)[:\s]+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){0,2})/i);
+  if (tutorM) r.tutor = trimToNextField(tutorM[1]);
 
   // Domicilio — después de keyword (es texto libre, sin patrón fijo, así que
   // necesita un ancla igual que diagnóstico/antecedentes/notas)
