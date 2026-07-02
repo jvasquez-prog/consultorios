@@ -1036,6 +1036,12 @@ function normNombre(s) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 }
 
+// Para detecci\u00f3n de duplicados: ignora coma y orden de palabras, as\u00ed "Garc\u00eda, Juan"
+// (cargado a mano) y "Juan Garc\u00eda" (extra\u00eddo por dictado libre) matchean igual.
+function normNombreDedupe(s) {
+  return normNombre(s).replace(/,/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
+}
+
 // ===== TERMINOLOG\u00cdA DIAGN\u00d3STICA =====
 const DIAG_ALIASES_DEFAULT = {
   'mmc':                          'Mielomeningocele',
@@ -2510,8 +2516,8 @@ async function savePac(force = false) {
       if (dupRec) dupTipo = `DNI ${Math.round(dniNum).toLocaleString()}`;
     }
     if (!dupRec && nombre) {
-      const normNom = normNombre(nombre);
-      dupRec = allPacientes.find(r => normNombre(r.fields[FP.nombre]||'') === normNom);
+      const normNom = normNombreDedupe(nombre);
+      dupRec = allPacientes.find(r => normNombreDedupe(r.fields[FP.nombre]||'') === normNom);
       if (dupRec) dupTipo = 'nombre idéntico';
     }
     if (dupRec) {
@@ -5048,20 +5054,33 @@ function extractEntities(text) {
   const tutorM = text.match(/(?:mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)[:\s]+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){0,2})/i);
   if (tutorM) r.tutor = tutorM[1].trim();
 
-  // Diagnóstico — después de keyword
-  const diagM = text.match(/(?:diagn[oó]stico|dx)[:\s,]+([^,.]{3,80})/i);
-  if (diagM) r.diag = diagM[1].trim();
+  // Al dictar de corrido (sin comas/puntos, como suele transcribir la Web
+  // Speech API) hay que cortar cada campo de texto libre apenas empieza la
+  // palabra-clave del campo siguiente, si no se "come" todo el resto.
+  const NEXT_FIELD_KW = /\b(antecedentes?|notas(?:\s+cl[ií]nicas?)?|tratamiento|tto|medicaci[oó]n|observaci[oó]n|obs|diagn[oó]stico|dx|dni|tel[eé]fono|mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)\b/i;
+  const trimToNextField = s => s.split(NEXT_FIELD_KW)[0].trim();
 
-  // Tratamiento + observaciones → notas (en PACIENTES no hay campo tratamiento)
+  // Diagnóstico — después de keyword ("principal"/"presuntivo" es parte de la
+  // muletilla, no del diagnóstico en sí, ej. "diagnóstico principal asma")
+  const diagM = text.match(/(?:diagn[oó]stico(?:\s+(?:principal|presuntivo))?|dx)[:\s,]+([^,.]{3,80})/i);
+  if (diagM) r.diag = trimToNextField(diagM[1]);
+
+  // Antecedentes — después de keyword
+  const antM = text.match(/(?:antecedentes?)[:\s,]+([^.]{3,150})/i);
+  if (antM) r.antec = trimToNextField(antM[1]);
+
+  // Tratamiento + observaciones + notas → notas (en PACIENTES no hay campo tratamiento)
   const notasParts = [];
   const tratM = text.match(/(?:tratamiento|tto|medicaci[oó]n)[:\s,]+([^.]{3,120})/i);
   const obsM  = text.match(/(?:observaci[oó]n|obs)[:\s,]+([^.]{3,120})/i);
-  if (tratM) notasParts.push('Tto: ' + tratM[1].trim());
-  if (obsM)  notasParts.push(obsM[1].trim());
+  const notM  = text.match(/(?:notas(?:\s+cl[ií]nicas?)?)[:\s,]+([^.]{3,150})/i);
+  if (tratM) notasParts.push('Tto: ' + trimToNextField(tratM[1]));
+  if (obsM)  notasParts.push(trimToNextField(obsM[1]));
+  if (notM)  notasParts.push(trimToNextField(notM[1]));
   if (notasParts.length) r.notas = notasParts.join('. ');
 
   // Nombre paciente — primer bloque de palabras con mayúscula, antes de número/keyword
-  const STOP = /\b(dni|tel[eé]fono|diagn|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
+  const STOP = /\b(dni|tel[eé]fono|diagn|antec|notas|obs|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
   // Descarta muletillas/etiquetas de campo dichas antes del valor (ej. "nombre Javier Vasquez")
   const NAME_LABEL = /^\s*(nombre y apellido|nombre completo|nombre del paciente|apellido y nombre|el paciente es|el paciente|se llama|paciente es|paciente|apellido|nombre)\s*[:\-,]?\s*/i;
   let firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
@@ -5083,26 +5102,39 @@ function applyExtraction(r) {
   if (r.tutor)   set('pf-tutor',  r.tutor);
   if (r.tel)     set('pf-tel',    r.tel);
   if (r.diag)    set('pf-diag',   r.diag);
+  if (r.antec)   set('pf-ant',    r.antec);
   if (r.notas)   set('pf-notas',  r.notas);
+}
+
+// Borra un campo del formulario con un solo toque (llamado desde las chips
+// del resumen de extracción) — evita tener que editar manualmente el texto.
+function clearVoiceField(targetId, chipEl) {
+  const e = document.getElementById(targetId);
+  if (!e) return;
+  if (e.tagName === 'SELECT') e.selectedIndex = 0; else e.value = '';
+  e.dispatchEvent(new Event('input'));
+  if (chipEl) chipEl.remove();
+  showToast('Campo borrado');
 }
 
 function showExtractionSummary(r) {
   const banner = document.getElementById('voice-flow-banner');
   if (!banner) return;
   const FIELDS = [
-    {k:'nombre',  l:'Nombre',      i:'👤'},
-    {k:'sexo',    l:'Sexo',        i:'⚧'},
-    {k:'fnac',    l:'FNac',        i:'📅', d: r.fnacHint},
-    {k:'dni',     l:'DNI',         i:'🪪'},
-    {k:'obraSoc', l:'Obra social', i:'🏥'},
-    {k:'tutor',   l:'Tutor',       i:'👨‍👧'},
-    {k:'tel',     l:'Teléfono',    i:'📞'},
-    {k:'diag',    l:'Diagnóstico', i:'🩺'},
-    {k:'notas',   l:'Notas',       i:'📝'},
+    {k:'nombre',  l:'Nombre',       i:'👤', t:'pf-nombre'},
+    {k:'sexo',    l:'Sexo',         i:'⚧', t:'pf-sexo'},
+    {k:'fnac',    l:'FNac',         i:'📅', t:'pf-fnac', d: r.fnacHint},
+    {k:'dni',     l:'DNI',          i:'🪪', t:'pf-dni'},
+    {k:'obraSoc', l:'Obra social',  i:'🏥', t:'pf-os'},
+    {k:'tutor',   l:'Tutor',        i:'👨‍👧', t:'pf-tutor'},
+    {k:'tel',     l:'Teléfono',     i:'📞', t:'pf-tel'},
+    {k:'diag',    l:'Diagnóstico',  i:'🩺', t:'pf-diag'},
+    {k:'antec',   l:'Antecedentes', i:'📋', t:'pf-ant'},
+    {k:'notas',   l:'Notas',        i:'📝', t:'pf-notas'},
   ];
   const found   = FIELDS.filter(f => r[f.k]);
   const missing = FIELDS.filter(f => !r[f.k]).map(f=>f.l);
-  const chips   = found.map(f=>`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 9px;font-size:11px;color:var(--green);margin:2px">${f.i} <b>${(f.d||String(r[f.k])).slice(0,22)}</b></span>`).join('');
+  const chips   = found.map(f=>`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 9px;font-size:11px;color:var(--green);margin:2px">${f.i} <b>${(f.d||String(r[f.k])).slice(0,22)}</b> <span onclick="clearVoiceField('${f.t}', this.parentElement)" title="Borrar campo" style="cursor:pointer;color:var(--red);font-weight:700;padding:0 2px">✕</span></span>`).join('');
   banner.style.display = 'block';
   banner.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -5254,7 +5286,20 @@ function speak(text, onEnd) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'es-AR';
   u.rate = 1.05;
-  u.onend = () => setTimeout(() => onEnd && onEnd(), 300);
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearInterval(resumeTimer);
+    clearTimeout(safetyTimer);
+    setTimeout(() => onEnd && onEnd(), 300);
+  };
+  u.onend = finish;
+  u.onerror = finish;
+  // Chrome a veces "pausa" el motor de síntesis en sesiones largas y nunca
+  // dispara onend, dejando el dictado guiado colgado a mitad de camino.
+  const resumeTimer = setInterval(() => { if (speechSynthesis.paused) speechSynthesis.resume(); }, 4000);
+  const safetyTimer = setTimeout(finish, Math.max(4000, text.length * 150));
   speechSynthesis.speak(u);
 }
 
@@ -5292,7 +5337,20 @@ function voiceFlowCapture() {
   voiceRecognition.lang = 'es-AR';
   voiceRecognition.continuous = false;
   voiceRecognition.interimResults = false;
+  let advanced = false;
+  // Red de seguridad: si el navegador nunca dispara resultado/error para este
+  // campo (se cuelga la escucha), igual avanzamos en vez de trabar el flujo.
+  const safetyTimer = setTimeout(() => {
+    if (advanced) return;
+    advanced = true;
+    if (voiceRecognition) { try { voiceRecognition.stop(); } catch(_) {} voiceRecognition = null; }
+    showToast('No se escuchó nada, continuando...');
+    voiceFlowNext();
+  }, 12000);
   voiceRecognition.onresult = e => {
+    if (advanced) return;
+    advanced = true;
+    clearTimeout(safetyTimer);
     const text = e.results[0][0].transcript.trim();
     if (/omitir|saltar/i.test(text)) { voiceFlowNext(); return; }
     const el = document.getElementById(step.id);
@@ -5308,7 +5366,13 @@ function voiceFlowCapture() {
     }
     voiceFlowNext();
   };
-  voiceRecognition.onerror = () => { showToast('No se escuchó nada, continuando...'); setTimeout(voiceFlowNext, 800); };
+  voiceRecognition.onerror = () => {
+    if (advanced) return;
+    advanced = true;
+    clearTimeout(safetyTimer);
+    showToast('No se escuchó nada, continuando...');
+    setTimeout(voiceFlowNext, 800);
+  };
   voiceRecognition.onend = () => { voiceRecognition = null; };
   voiceRecognition.start();
 }
