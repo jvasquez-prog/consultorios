@@ -5490,6 +5490,15 @@ function stripOverlap(existingText, newSegment) {
   return newSegment;
 }
 
+// Palabra clave para terminar el dictado por voz, sin tener que tocar el
+// botón "■ Listo". El reconocimiento continuo muchas veces pega "listo" al
+// final de la frase anterior en el mismo segmento final (ej. "...teléfono
+// 1122334455 listo"), así que buscamos la palabra clave AL FINAL del
+// segmento (no exigimos que sea el segmento entero) y la recortamos,
+// conservando el resto como dato dictado. Se usa tanto en el dictado libre
+// como en la captura continua de un campo individual (ver runContinuousVoice).
+const STOP_WORD_TRAILING = /\s*\b(listo|list[ao]s|termin(?:e|é|ado|amos)|finalizar|fin del registro)\.?\s*$/i;
+
 function launchFreeDictRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); resetFreeDictation(); return; }
@@ -5497,13 +5506,6 @@ function launchFreeDictRecognition() {
   freeDictRecognition.lang = 'es-AR';
   freeDictRecognition.continuous = true;
   freeDictRecognition.interimResults = true;
-  // Palabra clave para terminar el dictado por voz, sin tener que tocar el
-  // botón "■ Listo". El reconocimiento continuo muchas veces pega "listo" al
-  // final de la frase anterior en el mismo segmento final (ej. "...teléfono
-  // 1122334455 listo"), así que buscamos la palabra clave AL FINAL del
-  // segmento (no exigimos que sea el segmento entero) y la recortamos,
-  // conservando el resto como dato dictado.
-  const STOP_WORD_TRAILING = /\s*\b(listo|list[ao]s|termin(?:e|é|ado|amos)|finalizar|fin del registro)\.?\s*$/i;
   freeDictRecognition.onresult = ev => {
     freeDictAutoRestarts = 0;
     let fin = '', tmp = '', stopRequested = false;
@@ -5664,8 +5666,35 @@ function wordsToNumber(str) {
 }
 function parseVoiceDate(text) {
   const MESES = { enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12 };
-  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-  const m = norm.match(/^\s*(.+?)\s+de\s+(\w+)\s+(?:de|del)?\s*(.+?)\s*$/);
+  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+
+  // En Android, el motor de reconocimiento suele "autoformatear" una fecha
+  // dictada directamente a dígitos (ej. "15/3/2022" en vez de "quince de
+  // marzo de dos mil veintidós"), sin decir "de" en ningún lado — el regex
+  // de más abajo exige ese "de" literal, así que sin este atajo la fecha
+  // nunca se reconocía en esos casos. Formato día/mes/año (es-AR).
+  const digitDMY = norm.match(/^(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(\d{2,4})$/);
+  if (digitDMY) {
+    const day = parseInt(digitDMY[1]), month = parseInt(digitDMY[2]);
+    let year = parseInt(digitDMY[3]);
+    if (year < 100) year += year < 50 ? 2000 : 1900;
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1900 && year <= 2100) {
+      return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    }
+  }
+  // Por si el motor ya entrega formato ISO (año-mes-día).
+  const digitYMD = norm.match(/^(\d{4})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})$/);
+  if (digitYMD) {
+    const year = parseInt(digitYMD[1]), month = parseInt(digitYMD[2]), day = parseInt(digitYMD[3]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1900 && year <= 2100) {
+      return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    }
+  }
+
+  // "del" antes que "de" en la alternancia: si no, "del dos mil..." se
+  // matcheaba como "de" + una "l" suelta al principio del año, rompiendo
+  // el parseo de una frase tan común como "...marzo del dos mil...".
+  const m = norm.match(/^\s*(?:el\s+)?(.+?)\s+de\s+(\w+)\s+(?:del|de)?\s*(.+?)\s*$/);
   if (!m) return null;
   const [, dayRaw, monthWord, yearRaw] = m;
   const day   = /^\d+$/.test(dayRaw)  ? parseInt(dayRaw)  : wordsToNumber(dayRaw);
@@ -5736,11 +5765,129 @@ function discardRecognition(rec) {
   try { rec.stop(); } catch(_) {}
 }
 
+// ===== Captura de voz continua para un solo campo =====
+// El campo "Apellido y Nombre" se dictaba con una sola frase (continuous:
+// false), que corta la escucha en la primera pausa natural — si alguien
+// pausa entre apellido y nombre, el reconocimiento se cortaba a mitad de
+// camino y quedaba incompleto. Este motor reutiliza el mismo patrón de
+// escucha continua + auto-reinicio que el dictado libre (ver
+// launchFreeDictRecognition) para un campo puntual, terminando cuando se
+// dice "listo" o se toca el botón de detener.
+let contVoiceRecognition  = null;
+let contVoiceTranscript   = '';
+let contVoiceStopping     = false;
+let contVoiceAutoRestarts = 0;
+let contVoiceOnFinish     = null;
+const CONT_VOICE_MAX_AUTO_RESTARTS = 4;
+
+function renderContinuousVoiceBanner(label, liveText) {
+  const banner = document.getElementById('voice-flow-banner');
+  if (!banner) return;
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px;animation:pulse .8s infinite">🎤</span>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px;color:var(--blue2)">Escuchando: ${label}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px;min-height:18px;font-style:italic;line-height:1.4">${liveText || ''}</div>
+      </div>
+      <button onclick="stopContinuousVoice()" style="background:var(--red);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">■ Listo</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">Decí <b>"listo"</b> o tocá el botón para terminar</div>`;
+}
+
+function runContinuousVoice(label, onFinish) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
+  if (voiceRecognition)     { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  if (contVoiceRecognition) { discardRecognition(contVoiceRecognition); contVoiceRecognition = null; }
+  contVoiceTranscript = ''; contVoiceStopping = false; contVoiceAutoRestarts = 0;
+  contVoiceOnFinish = onFinish;
+  renderContinuousVoiceBanner(label, '');
+
+  const launch = () => {
+    contVoiceRecognition = new SR();
+    contVoiceRecognition.lang = 'es-AR';
+    contVoiceRecognition.continuous = true;
+    contVoiceRecognition.interimResults = true;
+    contVoiceRecognition.onresult = ev => {
+      contVoiceAutoRestarts = 0;
+      let fin = '', tmp = '', stopRequested = false;
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) {
+          let seg = ev.results[i][0].transcript.trim();
+          if (STOP_WORD_TRAILING.test(seg)) {
+            stopRequested = true;
+            seg = seg.replace(STOP_WORD_TRAILING, '').trim();
+          }
+          if (seg) {
+            seg = stripOverlap(contVoiceTranscript + fin, seg);
+            if (seg) fin += seg + ' ';
+          }
+        } else tmp += ev.results[i][0].transcript;
+      }
+      contVoiceTranscript += fin;
+      renderContinuousVoiceBanner(label, (contVoiceTranscript + tmp).trim());
+      if (stopRequested) stopContinuousVoice();
+    };
+    contVoiceRecognition.onerror = ev => {
+      if (ev.error === 'no-speech' || ev.error === 'network' || ev.error === 'aborted') return;
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        showToast('Permiso de micrófono denegado — habilitalo en la configuración del sitio');
+        contVoiceStopping = true;
+        finishContinuousVoice();
+        return;
+      }
+      showToast('Error al escuchar: ' + ev.error);
+      contVoiceStopping = true;
+      finishContinuousVoice();
+    };
+    contVoiceRecognition.onend = () => {
+      contVoiceRecognition = null;
+      if (contVoiceStopping) { finishContinuousVoice(); return; }
+      if (contVoiceAutoRestarts < CONT_VOICE_MAX_AUTO_RESTARTS) { contVoiceAutoRestarts++; launch(); }
+      else finishContinuousVoice();
+    };
+    contVoiceRecognition.start();
+  };
+  launch();
+}
+
+function stopContinuousVoice() {
+  contVoiceStopping = true;
+  if (contVoiceRecognition) contVoiceRecognition.stop();
+  else finishContinuousVoice();
+}
+
+function finishContinuousVoice() {
+  if (contVoiceRecognition) { discardRecognition(contVoiceRecognition); contVoiceRecognition = null; }
+  const banner = document.getElementById('voice-flow-banner');
+  if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
+  const text = contVoiceTranscript.trim();
+  const cb = contVoiceOnFinish;
+  contVoiceOnFinish = null; contVoiceTranscript = ''; contVoiceStopping = false; contVoiceAutoRestarts = 0;
+  if (cb) cb(text);
+}
+
 function voiceFlowCapture() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR || voiceFlowStep < 0) return;
-  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   const step = VOICE_FLOW[voiceFlowStep];
+
+  // El nombre se dicta con escucha continua (no se corta en la pausa
+  // natural entre apellido y nombre) — ver runContinuousVoice.
+  if (step.id === 'pf-nombre') {
+    runContinuousVoice(step.q, text => {
+      if (voiceFlowStep < 0) return; // se cerró el dictado guiado mientras escuchaba
+      if (/omitir|saltar/i.test(text)) { voiceFlowNext(); return; }
+      const el = document.getElementById(step.id);
+      if (el && text) { el.value = text; el.dispatchEvent(new Event('input')); }
+      voiceFlowNext();
+    });
+    return;
+  }
+
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   voiceRecognition = new SR();
   voiceRecognition.lang = 'es-AR';
   voiceRecognition.continuous = false;
@@ -5792,10 +5939,19 @@ function voiceFlowCapture() {
     }
     voiceFlowNext();
   };
-  voiceRecognition.onerror = () => {
+  voiceRecognition.onerror = e => {
     if (advanced) return;
     advanced = true;
     clearTimeout(safetyTimer);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      // Sin permiso de micrófono no tiene sentido seguir insistiendo campo
+      // por campo (antes esto se trataba igual que "silencio" y el flujo
+      // seguía reintentando —y volviendo a pedir permiso— en cada uno de
+      // los 11 campos). Cortamos una sola vez con un mensaje claro.
+      showToast('Permiso de micrófono denegado — habilitalo en la configuración del sitio e intentá de nuevo');
+      stopGuidedVoice();
+      return;
+    }
     showToast('No se escuchó nada, continuando...');
     setTimeout(voiceFlowNext, 800);
   };
@@ -5830,6 +5986,12 @@ function stopGuidedVoice() {
   voiceFlowStep = -1;
   speechSynthesis.cancel();
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  if (contVoiceRecognition) {
+    contVoiceOnFinish = null;
+    discardRecognition(contVoiceRecognition);
+    contVoiceRecognition = null;
+    contVoiceStopping = false; contVoiceTranscript = ''; contVoiceAutoRestarts = 0;
+  }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
   const btn = document.getElementById('btn-guided-voice');
@@ -5840,9 +6002,23 @@ function stopGuidedVoice() {
 function startVoice(targetId) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
-  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   const el = document.getElementById(targetId);
   if (!el) return;
+
+  // El nombre se dicta con escucha continua (no se corta en la pausa
+  // natural entre apellido y nombre) — ver runContinuousVoice.
+  if (targetId === 'pf-nombre') {
+    const base = el.value ? el.value + ' ' : '';
+    runContinuousVoice('Apellido y nombre', text => {
+      if (!text) return;
+      el.value = base + text;
+      el.dispatchEvent(new Event('input'));
+      showToast('✓ Voz reconocida');
+    });
+    return;
+  }
+
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   voiceRecognition = new SpeechRecognition();
   voiceRecognition.lang = 'es-AR';
   voiceRecognition.continuous = false;
