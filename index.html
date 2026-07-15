@@ -198,7 +198,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
 
 /* Home screen */
 .home-date{font-size:13px;color:var(--text2);margin-bottom:16px;font-weight:500}
-.home-stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px}
+.home-stats-row{display:grid;grid-template-columns:1fr;max-width:180px;gap:8px;margin-bottom:18px}
 .home-stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 8px;text-align:center}
 .home-stat-num{font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--blue2);line-height:1}
 .home-stat-lbl{font-size:9px;color:var(--text3);margin-top:4px;line-height:1.3}
@@ -271,7 +271,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
   #list-stock{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
   #list-stock .stock-list-item{margin-bottom:0}
   .dash-stats{grid-template-columns:repeat(4,1fr)}
-  .home-stats-row{grid-template-columns:repeat(6,1fr)}
   .home-section-grid{grid-template-columns:repeat(6,1fr)}
   .modal{max-width:560px;border-radius:20px;align-self:center;max-height:85vh}
   .modal-overlay{align-items:center}
@@ -607,6 +606,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
       style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--blue2);border:none;border-radius:var(--radius);padding:14px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px;font-family:'DM Sans',sans-serif;letter-spacing:.3px">
       🎤 Hablar libremente
     </button>
+    <!-- Guía rápida para que el reconocimiento de voz entienda mejor -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:11.5px;color:var(--text2);line-height:1.55">
+      <div style="font-weight:700;color:var(--text);margin-bottom:4px">💡 Para que te entienda mejor</div>
+      <ul style="margin:0;padding-left:16px">
+        <li>Hablá <b>despacio y claro</b>, sin apurarte.</li>
+        <li>Antes de empezar, fijate que el micrófono del celular esté <b>habilitado</b> para esta app (si el navegador te pregunta, elegí "Permitir").</li>
+        <li>Nombrá el dato antes de decirlo: <i>"DNI 40123456"</i>, <i>"teléfono 11 2233 4455"</i>, <i>"domicilio Mitre 450"</i>, <i>"fecha de nacimiento 15 de marzo de 2022"</i>.</li>
+        <li>Encadená los datos <b>sin pausas largas</b> entre uno y el siguiente — una pausa larga puede cortar la escucha.</li>
+        <li>Al terminar, decí <b>"listo"</b> o tocá el botón ■ Listo.</li>
+      </ul>
+    </div>
     <!-- Opción secundaria: dictado guiado campo por campo -->
     <div style="text-align:center;margin-bottom:18px">
       <button type="button" id="btn-guided-voice" onclick="startGuidedVoice()"
@@ -633,21 +643,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
         <input class="form-input" id="pf-dni" type="number" placeholder="—"/>
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Sexo</label>
-        <select class="form-input" id="pf-sexo">
-          <option value="">—</option>
-          <option>Masculino</option><option>Femenino</option><option>Otro</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Estado</label>
-        <select class="form-input" id="pf-estado">
-          <option value="">—</option>
-          <option>Activo</option><option>Alta</option>
-        </select>
-      </div>
+    <div class="form-group">
+      <label class="form-label">Sexo</label>
+      <select class="form-input" id="pf-sexo">
+        <option value="">—</option>
+        <option>Masculino</option><option>Femenino</option><option>Otro</option>
+      </select>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -2287,7 +2288,6 @@ function editCurrentPac() {
   document.getElementById('pf-dni').value       = valP(rec, FP.dni)        || '';
   document.getElementById('pf-sexo').value      = valP(rec, FP.sexo)       || '';
   document.getElementById('pf-os').value        = valP(rec, FP.obraSoc)    || '';
-  document.getElementById('pf-estado').value    = valP(rec, FP.estado)     || '';
   document.getElementById('pf-domicilio').value = valP(rec, FP.domicilio)  || '';
   document.getElementById('pf-tutor').value     = valP(rec, FP.tutor)      || '';
   document.getElementById('pf-tel').value       = valP(rec, FP.telTutor)   || '';
@@ -2465,7 +2465,7 @@ function openNewPac() {
   document.getElementById('pac-new-error').innerHTML = '';
   ['pf-nombre','pf-diag','pf-ant','pf-notas','pf-os','pf-domicilio','pf-tutor','pf-email'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   ['pf-dni'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
-  ['pf-sexo','pf-estado'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+  ['pf-sexo'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   document.getElementById('pf-fnac').value = '';
   document.getElementById('pf-tel').value = '';
   document.getElementById('pf-archivos').value = '';
@@ -2489,7 +2489,6 @@ function openEditPacById(recId) {
   document.getElementById('pf-dni').value       = valP(rec, FP.dni)        || '';
   document.getElementById('pf-sexo').value      = valP(rec, FP.sexo)       || '';
   document.getElementById('pf-os').value        = valP(rec, FP.obraSoc)    || '';
-  document.getElementById('pf-estado').value    = valP(rec, FP.estado)     || '';
   document.getElementById('pf-domicilio').value = valP(rec, FP.domicilio)  || '';
   document.getElementById('pf-tutor').value     = valP(rec, FP.tutor)      || '';
   document.getElementById('pf-tel').value       = valP(rec, FP.telTutor)   || '';
@@ -2530,7 +2529,10 @@ async function savePac(force = false) {
   const dni   = document.getElementById('pf-dni').value;        if (dni)   fields[FP.dni]        = parseFloat(dni);
   const sexo  = document.getElementById('pf-sexo').value;       if (sexo)  fields[FP.sexo]       = sexo;
   const os    = document.getElementById('pf-os').value.trim();  if (os)    fields[FP.obraSoc]    = os;
-  const est   = document.getElementById('pf-estado').value;     if (est)   fields[FP.estado]     = est;
+  // El campo Estado ya no se pide en el formulario: los pacientes nuevos
+  // quedan "Activo" por defecto (lo usan los recordatorios de vacunas y
+  // controles); al editar no se toca para no pisar un "Alta" ya cargado.
+  if (!editingId) fields[FP.estado] = 'Activo';
   const dom   = document.getElementById('pf-domicilio').value.trim(); if (dom) fields[FP.domicilio] = dom;
   const tut   = document.getElementById('pf-tutor').value.trim();     if (tut) fields[FP.tutor]    = tut;
   const tel   = document.getElementById('pf-tel').value.trim();       if (tel) fields[FP.telTutor] = tel;
@@ -3468,7 +3470,6 @@ function renderHome() {
   const d = new Date();
   const fechaStr = `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`;
   const total = allPacientes.length;
-  const activos = allPacientes.filter(r => (r.fields[FP.estado]?.name || r.fields[FP.estado] || '') === 'Activo').length;
 
   el.innerHTML = `
     <div class="home-date">${fechaStr}</div>
@@ -3476,14 +3477,6 @@ function renderHome() {
       <div class="home-stat-card">
         <div class="home-stat-num">${total}</div>
         <div class="home-stat-lbl">Pacientes</div>
-      </div>
-      <div class="home-stat-card">
-        <div class="home-stat-num">${activos}</div>
-        <div class="home-stat-lbl">Activos</div>
-      </div>
-      <div class="home-stat-card">
-        <div class="home-stat-num">${total - activos}</div>
-        <div class="home-stat-lbl">Dados de alta</div>
       </div>
     </div>
     <div class="home-section-grid">
@@ -5349,6 +5342,18 @@ function extractEntities(text) {
   const NEXT_FIELD_KW = /\b(antecedentes?|notas(?:\s+cl[ií]nicas?)?|tratamiento|tto|medicaci[oó]n|observaci[oó]n|obs|diagn[oó]stico|dx|dni|tel[eé]fono|celular|cel|domicilio|direcci[oó]n|correo(?:\s+electr[oó]nico)?|e[\s-]?mail|mam[aá]|pap[aá]|madre|padre|tutor(?:a)?|responsable)\b/i;
   const trimToNextField = s => s.split(NEXT_FIELD_KW)[0].trim();
 
+  // Fecha de nacimiento dictada explícitamente (ej. "nació el 15 de marzo
+  // de 2022" o "fecha de nacimiento 15/3/2022"). Antes, en dictado libre,
+  // esto no se intentaba nunca — sólo se calculaba una fecha aproximada a
+  // partir de la edad en meses/años (bloque de arriba), así que si la
+  // persona decía la fecha real de nacimiento, se perdía por completo. Si
+  // se reconoce, pisa la aproximación por edad porque es más precisa.
+  const fnacM = text.match(/(?:fecha de nacimiento|fnac|naci[oó]|nacida?)[:\s]+([^.]{4,60})/i);
+  if (fnacM) {
+    const d = parseVoiceDate(trimToNextField(fnacM[1]));
+    if (d) { r.fnac = d; r.fnacHint = null; }
+  }
+
   // Tutor — después de keyword familiar. El regex puede capturar hasta 2
   // palabras capitalizadas de más; si la próxima de la lista es otra palabra
   // clave (típicamente "teléfono", que la Web Speech API suele capitalizar),
@@ -5666,7 +5671,9 @@ function wordsToNumber(str) {
 }
 function parseVoiceDate(text) {
   const MESES = { enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12 };
-  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  // El prefijo "el" (ej. "nació el 15/3/2022") se recorta acá, una sola vez,
+  // para que valga tanto para el formato en dígitos como para el hablado.
+  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim().replace(/^el\s+/, '');
 
   // En Android, el motor de reconocimiento suele "autoformatear" una fecha
   // dictada directamente a dígitos (ej. "15/3/2022" en vez de "quince de
@@ -5694,7 +5701,7 @@ function parseVoiceDate(text) {
   // "del" antes que "de" en la alternancia: si no, "del dos mil..." se
   // matcheaba como "de" + una "l" suelta al principio del año, rompiendo
   // el parseo de una frase tan común como "...marzo del dos mil...".
-  const m = norm.match(/^\s*(?:el\s+)?(.+?)\s+de\s+(\w+)\s+(?:del|de)?\s*(.+?)\s*$/);
+  const m = norm.match(/^\s*(.+?)\s+de\s+(\w+)\s+(?:del|de)?\s*(.+?)\s*$/);
   if (!m) return null;
   const [, dayRaw, monthWord, yearRaw] = m;
   const day   = /^\d+$/.test(dayRaw)  ? parseInt(dayRaw)  : wordsToNumber(dayRaw);
