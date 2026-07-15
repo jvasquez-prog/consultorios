@@ -5402,9 +5402,29 @@ function extractEntities(text) {
   // se reconoce, pisa la aproximación por edad porque es más precisa.
   const fnacM = text.match(/(?:fecha de nacimiento|fnac|naci[oó]|nacida?)[:\s]+([^.]{4,60})/i);
   if (fnacM) {
-    const d = parseVoiceDate(trimToNextField(fnacM[1]));
+    const fnacRaw = trimToNextField(fnacM[1]);
+    const d = parseVoiceDate(fnacRaw);
     if (d) { r.fnac = d; r.fnacHint = null; }
+    // Si se dijo la palabra clave pero no se pudo interpretar la fecha, se
+    // guarda lo escuchado para avisar en el resumen — antes esto fallaba
+    // en silencio y quedaba igual que si nunca se hubiera dicho nada.
+    else r._fnacFailedRaw = fnacRaw;
   }
+
+  // Apellido / Nombre dictados con la palabra clave delante (como sugiere
+  // la guía de "Hablar libremente"). Antes esto rompía la detección: la
+  // heurística de abajo busca una cadena de palabras con mayúscula inicial,
+  // y "nombre"/"apellido" dichos en minúscula en el medio de la frase
+  // cortaban esa cadena, perdiendo lo que venía después (ej. "apellido
+  // García nombre Juan" sólo detectaba "García", nunca "Juan"). Se captura
+  // una sola palabra a propósito (no 2, como tutor/domicilio): con el flag
+  // /i que necesitamos para la palabra clave, un límite de "palabra con
+  // mayúscula" no sirve para frenar antes de tragarse el próximo campo, y
+  // la mayoría de los nombres se dictan como una sola palabra de todos modos.
+  const apellidoM = text.match(/\bapellido\b(?!\s+y\s+nombre)[:\s]+([^\s,.]+)/i);
+  if (apellidoM) r.apellido = apellidoM[1];
+  const nombreM = text.match(/\bnombre\b(?!\s+(?:y\s+apellido|completo|del\s+paciente|del\s+tutor|de\s+la\s+mam[aá]|del\s+pap[aá]))[:\s]+([^\s,.]+)/i);
+  if (nombreM) r.nombre = nombreM[1];
 
   // Tutor — después de keyword familiar. El regex puede capturar hasta 2
   // palabras capitalizadas de más; si la próxima de la lista es otra palabra
@@ -5452,21 +5472,25 @@ function extractEntities(text) {
   if (notM)  notasParts.push(trimToNextField(notM[1]));
   if (notasParts.length) r.notas = notasParts.join('. ');
 
-  // Nombre paciente — primer bloque de palabras con mayúscula, antes de número/keyword
-  const STOP = /\b(dni|tel[eé]fono|celular|cel|domicilio|direcci[oó]n|correo|mail|diagn|antec|notas|obs|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
-  // Descarta muletillas/etiquetas de campo dichas antes del valor (ej. "nombre Javier Vasquez")
-  const NAME_LABEL = /^\s*(nombre y apellido|nombre completo|nombre del paciente|apellido y nombre|el paciente es|el paciente|se llama|paciente es|paciente|apellido|nombre)\s*[:\-,]?\s*/i;
-  let firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
-  firstChunk = firstChunk.replace(NAME_LABEL, '').trim();
-  const nomM = firstChunk.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:[,\s]+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/);
-  if (nomM) {
-    // El formulario pide Apellido y Nombre como dos campos separados — se
-    // reutiliza la misma heurística de separación que usa la edición de
-    // pacientes (por coma si está, si no la primera palabra es el apellido).
-    const full = nomM[1].replace(/\s*,\s*/g,', ').trim();
-    const { apellido, nombre: soloNombre } = splitNombreCompleto(full);
-    if (apellido)   r.apellido = apellido;
-    if (soloNombre) r.nombre   = soloNombre;
+  // Nombre paciente — sólo si Apellido y/o Nombre no se detectaron ya por
+  // palabra clave arriba. Primer bloque de palabras con mayúscula, antes
+  // de número/keyword.
+  if (!r.apellido || !r.nombre) {
+    const STOP = /\b(dni|tel[eé]fono|celular|cel|domicilio|direcci[oó]n|correo|mail|diagn|antec|notas|obs|trat|mam|pap|madre|padre|tutor|ioma|pami|osde|galeno|swiss|sancor|medife|meses|a[ñn]os|masculino|femenino|reci[eé]n)\b/i;
+    // Descarta muletillas/etiquetas de campo dichas antes del valor (ej. "nombre Javier Vasquez")
+    const NAME_LABEL = /^\s*(nombre y apellido|nombre completo|nombre del paciente|apellido y nombre|el paciente es|el paciente|se llama|paciente es|paciente|apellido|nombre)\s*[:\-,]?\s*/i;
+    let firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
+    firstChunk = firstChunk.replace(NAME_LABEL, '').trim();
+    const nomM = firstChunk.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:[,\s]+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/);
+    if (nomM) {
+      // El formulario pide Apellido y Nombre como dos campos separados — se
+      // reutiliza la misma heurística de separación que usa la edición de
+      // pacientes (por coma si está, si no la primera palabra es el apellido).
+      const full = nomM[1].replace(/\s*,\s*/g,', ').trim();
+      const { apellido, nombre: soloNombre } = splitNombreCompleto(full);
+      if (!r.apellido && apellido)   r.apellido = apellido;
+      if (!r.nombre && soloNombre)   r.nombre   = soloNombre;
+    }
   }
 
   return r;
@@ -5537,6 +5561,7 @@ function showExtractionSummary(r) {
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">${chips}</div>
     ${missing.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Sin detectar: ${missing.join(', ')} — decilos por voz o completalos a mano</div>` : ''}
+    ${(!r.fnac && r._fnacFailedRaw) ? `<div style="font-size:11px;color:var(--amber);margin-bottom:8px">⚠ Se escuchó una fecha ("${escHtml(r._fnacFailedRaw)}") pero no se pudo interpretar — probá tocar el campo y elegirla del calendario.</div>` : ''}
     ${voiceAgainBtn}`;
 }
 
@@ -5761,6 +5786,23 @@ function parseVoiceDate(text) {
     }
   }
 
+  // A veces el motor devuelve los números pegados, sin espacios ni
+  // separadores (ej. "15032022" en vez de "15 3 2022" o "15/3/2022"). Se
+  // prueba día/mes/año en los largos de dígitos más razonables.
+  const glued = norm.replace(/\s+/g, '');
+  if (/^\d{6,8}$/.test(glued)) {
+    const combos = glued.length === 8 ? [[2,2,4]] : glued.length === 7 ? [[1,2,4],[2,1,4]] : [[2,2,2]];
+    for (const [dl, ml, yl] of combos) {
+      const day = parseInt(glued.slice(0, dl));
+      const month = parseInt(glued.slice(dl, dl + ml));
+      let year = parseInt(glued.slice(dl + ml));
+      if (yl === 2) year += year < 50 ? 2000 : 1900;
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1900 && year <= 2100) {
+        return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      }
+    }
+  }
+
   // Día, mes y año como tres números sueltos, sin conectores ("de"/"del")
   // — es la forma que le pedimos al usuario que dicte porque es la más
   // difícil de transcribir mal: nada entre medio que el motor de voz
@@ -5885,7 +5927,7 @@ function voiceFlowCapture() {
       if (step.type === 'date') {
         const d = parseVoiceDate(text);
         if (d) { el.value = d; el.dispatchEvent(new Event('input')); }
-        else { showToast('No entendí la fecha — completala manualmente'); }
+        else { showToast(`No entendí la fecha ("${text}") — completala manualmente o con el calendario`); }
       } else if (step.type === 'dni') {
         let digits = (text.match(/\d/g) || []).join('');
         if (digits.length < 6) {
