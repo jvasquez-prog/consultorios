@@ -626,22 +626,34 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     </div>
 
     <div class="form-section-lbl">Datos personales</div>
-    <div class="form-group">
-      <label class="form-label">Apellido y Nombre <span style="color:var(--red)">*</span></label>
-      <div style="display:flex;gap:6px">
-        <input class="form-input" id="pf-nombre" type="text" placeholder="García, Juan" autocomplete="off" style="flex:1"/>
-        <button type="button" onclick="startVoice('pf-nombre')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0">🎤</button>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Apellido <span style="color:var(--red)">*</span></label>
+        <div style="display:flex;gap:6px">
+          <input class="form-input" id="pf-apellido" type="text" placeholder="García" autocomplete="off" style="flex:1"/>
+          <button type="button" onclick="startVoice('pf-apellido')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0">🎤</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre <span style="color:var(--red)">*</span></label>
+        <div style="display:flex;gap:6px">
+          <input class="form-input" id="pf-nombre" type="text" placeholder="Juan" autocomplete="off" style="flex:1"/>
+          <button type="button" onclick="startVoice('pf-nombre')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0">🎤</button>
+        </div>
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Fecha de Nacimiento</label>
+        <label class="form-label">Fecha de Nacimiento <span style="color:var(--red)">*</span></label>
         <input class="form-input" id="pf-fnac" type="date"/>
       </div>
       <div class="form-group">
         <label class="form-label">DNI</label>
         <input class="form-input" id="pf-dni" type="number" placeholder="—"/>
       </div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin:-6px 0 14px;font-size:11px;color:var(--text2);line-height:1.5">
+      📅 <b>Fecha de nacimiento (obligatoria):</b> la forma más segura es tocar el campo y elegir la fecha del calendario. Si preferís dictarla por voz, decí <b>sólo día, mes y año en números</b>, sin nada más — ej. <i>«15 3 2022»</i>.
     </div>
     <div class="form-group">
       <label class="form-label">Sexo</label>
@@ -1051,6 +1063,21 @@ function normNombre(s) {
 // (cargado a mano) y "Juan Garc\u00eda" (extra\u00eddo por dictado libre) matchean igual.
 function normNombreDedupe(s) {
   return normNombre(s).replace(/,/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
+}
+
+// Separa un "Apellido y Nombre" combinado (como se guarda en Airtable, un
+// solo campo) en sus dos partes, para precargar los inputs separados del
+// formulario al editar. Con coma ("García, Juan") es exacto; sin coma sólo
+// hay heurística (primera palabra = apellido, resto = nombre).
+function splitNombreCompleto(full) {
+  const s = (full || '').trim();
+  if (!s) return { apellido: '', nombre: '' };
+  if (s.includes(',')) {
+    const [ap, ...rest] = s.split(',');
+    return { apellido: ap.trim(), nombre: rest.join(',').trim() };
+  }
+  const parts = s.split(/\s+/);
+  return { apellido: parts[0] || '', nombre: parts.slice(1).join(' ') };
 }
 
 // ===== TERMINOLOG\u00cdA DIAGN\u00d3STICA =====
@@ -2283,7 +2310,9 @@ function editCurrentPac() {
   document.getElementById('pac-new-btn-del').style.display = 'block';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar cambios';
   document.getElementById('pac-new-error').innerHTML = '';
-  document.getElementById('pf-nombre').value    = valP(rec, FP.nombre)     || '';
+  { const nb = splitNombreCompleto(valP(rec, FP.nombre));
+    document.getElementById('pf-apellido').value = nb.apellido;
+    document.getElementById('pf-nombre').value    = nb.nombre; }
   document.getElementById('pf-fnac').value      = valP(rec, FP.fnac)       || '';
   document.getElementById('pf-dni').value       = valP(rec, FP.dni)        || '';
   document.getElementById('pf-sexo').value      = valP(rec, FP.sexo)       || '';
@@ -2463,7 +2492,7 @@ function openNewPac() {
   document.getElementById('pac-new-btn-del').style.display = 'none';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar paciente';
   document.getElementById('pac-new-error').innerHTML = '';
-  ['pf-nombre','pf-diag','pf-ant','pf-notas','pf-os','pf-domicilio','pf-tutor','pf-email'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+  ['pf-apellido','pf-nombre','pf-diag','pf-ant','pf-notas','pf-os','pf-domicilio','pf-tutor','pf-email'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   ['pf-dni'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   ['pf-sexo'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   document.getElementById('pf-fnac').value = '';
@@ -2484,7 +2513,9 @@ function openEditPacById(recId) {
   document.getElementById('pac-new-btn-del').style.display = 'block';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar cambios';
   document.getElementById('pac-new-error').innerHTML = '';
-  document.getElementById('pf-nombre').value    = valP(rec, FP.nombre)     || '';
+  { const nb = splitNombreCompleto(valP(rec, FP.nombre));
+    document.getElementById('pf-apellido').value = nb.apellido;
+    document.getElementById('pf-nombre').value    = nb.nombre; }
   document.getElementById('pf-fnac').value      = valP(rec, FP.fnac)       || '';
   document.getElementById('pf-dni').value       = valP(rec, FP.dni)        || '';
   document.getElementById('pf-sexo').value      = valP(rec, FP.sexo)       || '';
@@ -2522,10 +2553,31 @@ async function waitForVoiceDictationToFinish() {
 
 async function savePac(force = false) {
   await waitForVoiceDictationToFinish();
-  const nombre = document.getElementById('pf-nombre').value.trim();
+  const apellido = document.getElementById('pf-apellido').value.trim();
+  const nombreSolo = document.getElementById('pf-nombre').value.trim();
+  const fnac  = document.getElementById('pf-fnac').value;
+
+  // Apellido, Nombre y Fecha de Nacimiento son obligatorios — antes se podía
+  // guardar un paciente sin fecha de nacimiento porque sólo se incluía en
+  // el guardado "si estaba" (if (fnac) ...), nunca se exigía. Se corta acá,
+  // antes de armar "fields", para no depender de la validación HTML nativa
+  // (el botón "Guardar" no es un submit dentro de un <form>).
+  const faltantes = [];
+  if (!apellido)   faltantes.push('Apellido');
+  if (!nombreSolo) faltantes.push('Nombre');
+  if (!fnac)       faltantes.push('Fecha de nacimiento');
+  if (faltantes.length) {
+    document.getElementById('pac-new-error').innerHTML =
+      `<div class="error-msg">Falta completar: ${faltantes.join(', ')}.</div>`;
+    return;
+  }
+
+  // Se guarda combinado en un solo campo de Airtable ("Apellido y Nombre"),
+  // igual que antes de separar el formulario en dos inputs.
+  const nombre = `${apellido}, ${nombreSolo}`;
   const fields = {};
-  if (nombre) fields[FP.nombre] = nombre;
-  const fnac  = document.getElementById('pf-fnac').value;       if (fnac)  fields[FP.fnac]       = fnac;
+  fields[FP.nombre] = nombre;
+  if (fnac) fields[FP.fnac] = fnac;
   const dni   = document.getElementById('pf-dni').value;        if (dni)   fields[FP.dni]        = parseFloat(dni);
   const sexo  = document.getElementById('pf-sexo').value;       if (sexo)  fields[FP.sexo]       = sexo;
   const os    = document.getElementById('pf-os').value.trim();  if (os)    fields[FP.obraSoc]    = os;
@@ -5407,7 +5459,15 @@ function extractEntities(text) {
   let firstChunk = text.split(/\d/)[0].split(STOP)[0].trim();
   firstChunk = firstChunk.replace(NAME_LABEL, '').trim();
   const nomM = firstChunk.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:[,\s]+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/);
-  if (nomM) r.nombre = nomM[1].replace(/\s*,\s*/g,', ').trim();
+  if (nomM) {
+    // El formulario pide Apellido y Nombre como dos campos separados — se
+    // reutiliza la misma heurística de separación que usa la edición de
+    // pacientes (por coma si está, si no la primera palabra es el apellido).
+    const full = nomM[1].replace(/\s*,\s*/g,', ').trim();
+    const { apellido, nombre: soloNombre } = splitNombreCompleto(full);
+    if (apellido)   r.apellido = apellido;
+    if (soloNombre) r.nombre   = soloNombre;
+  }
 
   return r;
 }
@@ -5415,6 +5475,7 @@ function extractEntities(text) {
 function applyExtraction(r) {
   const set = (id, v) => { const e=document.getElementById(id); if(e&&v!==undefined){e.value=v;e.dispatchEvent(new Event('input'));} };
   const sel = (id, v) => { const e=document.getElementById(id); if(!e||!v) return; for(let i=0;i<e.options.length;i++) if(e.options[i].text===v){e.selectedIndex=i;break;} };
+  if (r.apellido) set('pf-apellido', r.apellido);
   if (r.nombre)  set('pf-nombre', r.nombre);
   if (r.dni)     set('pf-dni',    r.dni);
   if (r.fnac)    set('pf-fnac',   r.fnac);
@@ -5444,6 +5505,7 @@ function showExtractionSummary(r) {
   const banner = document.getElementById('voice-flow-banner');
   if (!banner) return;
   const FIELDS = [
+    {k:'apellido', l:'Apellido',    i:'👤', t:'pf-apellido'},
     {k:'nombre',  l:'Nombre',       i:'👤', t:'pf-nombre'},
     {k:'sexo',    l:'Sexo',         i:'⚧', t:'pf-sexo'},
     {k:'fnac',    l:'FNac',         i:'📅', t:'pf-fnac', d: r.fnacHint},
@@ -5500,8 +5562,7 @@ function stripOverlap(existingText, newSegment) {
 // final de la frase anterior en el mismo segmento final (ej. "...teléfono
 // 1122334455 listo"), así que buscamos la palabra clave AL FINAL del
 // segmento (no exigimos que sea el segmento entero) y la recortamos,
-// conservando el resto como dato dictado. Se usa tanto en el dictado libre
-// como en la captura continua de un campo individual (ver runContinuousVoice).
+// conservando el resto como dato dictado.
 const STOP_WORD_TRAILING = /\s*\b(listo|list[ao]s|termin(?:e|é|ado|amos)|finalizar|fin del registro)\.?\s*$/i;
 
 function launchFreeDictRecognition() {
@@ -5630,10 +5691,11 @@ let voiceRecognition = null;
 let voiceFlowStep = -1;
 
 const VOICE_FLOW = [
-  { id: 'pf-nombre',    q: 'Apellido y nombre del paciente',                   type: 'text' },
+  { id: 'pf-apellido',  q: 'Apellido del paciente',                            type: 'text' },
+  { id: 'pf-nombre',    q: 'Nombre del paciente',                              type: 'text' },
   { id: 'pf-dni',       q: 'DNI del paciente',                                 type: 'dni' },
   { id: 'pf-sexo',      q: 'Sexo: masculino, femenino, u otro',                type: 'sexo' },
-  { id: 'pf-fnac',      q: 'Fecha de nacimiento. Por ejemplo: quince de marzo de dos mil veintidós', type: 'date' },
+  { id: 'pf-fnac',      q: 'Fecha de nacimiento. Decí sólo día, mes y año en números — por ejemplo: quince, tres, dos mil veintidós', type: 'date' },
   { id: 'pf-os',        q: 'Obra social',                                      type: 'text' },
   { id: 'pf-domicilio', q: 'Domicilio',                                        type: 'text' },
   { id: 'pf-tutor',     q: 'Nombre del tutor o responsable',                   type: 'text' },
@@ -5671,9 +5733,10 @@ function wordsToNumber(str) {
 }
 function parseVoiceDate(text) {
   const MESES = { enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12 };
-  // El prefijo "el" (ej. "nació el 15/3/2022") se recorta acá, una sola vez,
-  // para que valga tanto para el formato en dígitos como para el hablado.
-  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim().replace(/^el\s+/, '');
+  // El prefijo "el" (ej. "nació el 15/3/2022") y las comas (que a veces
+  // quedan de una pausa al dictar "quince, tres, dos mil veintidós") se
+  // recortan acá, una sola vez, para que valgan en todos los formatos.
+  const norm = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/,/g,' ').replace(/\s+/g,' ').trim().replace(/^el\s+/, '');
 
   // En Android, el motor de reconocimiento suele "autoformatear" una fecha
   // dictada directamente a dígitos (ej. "15/3/2022" en vez de "quince de
@@ -5694,6 +5757,25 @@ function parseVoiceDate(text) {
   if (digitYMD) {
     const year = parseInt(digitYMD[1]), month = parseInt(digitYMD[2]), day = parseInt(digitYMD[3]);
     if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1900 && year <= 2100) {
+      return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    }
+  }
+
+  // Día, mes y año como tres números sueltos, sin conectores ("de"/"del")
+  // — es la forma que le pedimos al usuario que dicte porque es la más
+  // difícil de transcribir mal: nada entre medio que el motor de voz
+  // pueda comerse o confundir. Acepta cada número en dígitos o en
+  // palabras, y el año puede venir en varias palabras ("dos mil
+  // veintidós"), por eso se arma con todos los tokens que sobran.
+  const tokens = norm.split(' ').filter(Boolean);
+  if (tokens.length >= 3) {
+    const day = /^\d+$/.test(tokens[0]) ? parseInt(tokens[0]) : wordsToNumber(tokens[0]);
+    const monthTok = tokens[1];
+    const month = /^\d+$/.test(monthTok) ? parseInt(monthTok) : (MESES[monthTok] || wordsToNumber(monthTok));
+    const yearToks = tokens.slice(2);
+    const yearStr = yearToks.join('');
+    const year = /^\d+$/.test(yearStr) ? parseInt(yearStr) : wordsToNumber(yearToks.join(' '));
+    if (day && month && year && day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1900 && year <= 2100) {
       return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     }
   }
@@ -5772,127 +5854,10 @@ function discardRecognition(rec) {
   try { rec.stop(); } catch(_) {}
 }
 
-// ===== Captura de voz continua para un solo campo =====
-// El campo "Apellido y Nombre" se dictaba con una sola frase (continuous:
-// false), que corta la escucha en la primera pausa natural — si alguien
-// pausa entre apellido y nombre, el reconocimiento se cortaba a mitad de
-// camino y quedaba incompleto. Este motor reutiliza el mismo patrón de
-// escucha continua + auto-reinicio que el dictado libre (ver
-// launchFreeDictRecognition) para un campo puntual, terminando cuando se
-// dice "listo" o se toca el botón de detener.
-let contVoiceRecognition  = null;
-let contVoiceTranscript   = '';
-let contVoiceStopping     = false;
-let contVoiceAutoRestarts = 0;
-let contVoiceOnFinish     = null;
-const CONT_VOICE_MAX_AUTO_RESTARTS = 4;
-
-function renderContinuousVoiceBanner(label, liveText) {
-  const banner = document.getElementById('voice-flow-banner');
-  if (!banner) return;
-  banner.style.display = 'block';
-  banner.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:22px;animation:pulse .8s infinite">🎤</span>
-      <div style="flex:1">
-        <div style="font-weight:700;font-size:14px;color:var(--blue2)">Escuchando: ${label}</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:4px;min-height:18px;font-style:italic;line-height:1.4">${liveText || ''}</div>
-      </div>
-      <button onclick="stopContinuousVoice()" style="background:var(--red);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">■ Listo</button>
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:8px">Decí <b>"listo"</b> o tocá el botón para terminar</div>`;
-}
-
-function runContinuousVoice(label, onFinish) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
-  if (voiceRecognition)     { discardRecognition(voiceRecognition); voiceRecognition = null; }
-  if (contVoiceRecognition) { discardRecognition(contVoiceRecognition); contVoiceRecognition = null; }
-  contVoiceTranscript = ''; contVoiceStopping = false; contVoiceAutoRestarts = 0;
-  contVoiceOnFinish = onFinish;
-  renderContinuousVoiceBanner(label, '');
-
-  const launch = () => {
-    contVoiceRecognition = new SR();
-    contVoiceRecognition.lang = 'es-AR';
-    contVoiceRecognition.continuous = true;
-    contVoiceRecognition.interimResults = true;
-    contVoiceRecognition.onresult = ev => {
-      contVoiceAutoRestarts = 0;
-      let fin = '', tmp = '', stopRequested = false;
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        if (ev.results[i].isFinal) {
-          let seg = ev.results[i][0].transcript.trim();
-          if (STOP_WORD_TRAILING.test(seg)) {
-            stopRequested = true;
-            seg = seg.replace(STOP_WORD_TRAILING, '').trim();
-          }
-          if (seg) {
-            seg = stripOverlap(contVoiceTranscript + fin, seg);
-            if (seg) fin += seg + ' ';
-          }
-        } else tmp += ev.results[i][0].transcript;
-      }
-      contVoiceTranscript += fin;
-      renderContinuousVoiceBanner(label, (contVoiceTranscript + tmp).trim());
-      if (stopRequested) stopContinuousVoice();
-    };
-    contVoiceRecognition.onerror = ev => {
-      if (ev.error === 'no-speech' || ev.error === 'network' || ev.error === 'aborted') return;
-      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-        showToast('Permiso de micrófono denegado — habilitalo en la configuración del sitio');
-        contVoiceStopping = true;
-        finishContinuousVoice();
-        return;
-      }
-      showToast('Error al escuchar: ' + ev.error);
-      contVoiceStopping = true;
-      finishContinuousVoice();
-    };
-    contVoiceRecognition.onend = () => {
-      contVoiceRecognition = null;
-      if (contVoiceStopping) { finishContinuousVoice(); return; }
-      if (contVoiceAutoRestarts < CONT_VOICE_MAX_AUTO_RESTARTS) { contVoiceAutoRestarts++; launch(); }
-      else finishContinuousVoice();
-    };
-    contVoiceRecognition.start();
-  };
-  launch();
-}
-
-function stopContinuousVoice() {
-  contVoiceStopping = true;
-  if (contVoiceRecognition) contVoiceRecognition.stop();
-  else finishContinuousVoice();
-}
-
-function finishContinuousVoice() {
-  if (contVoiceRecognition) { discardRecognition(contVoiceRecognition); contVoiceRecognition = null; }
-  const banner = document.getElementById('voice-flow-banner');
-  if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
-  const text = contVoiceTranscript.trim();
-  const cb = contVoiceOnFinish;
-  contVoiceOnFinish = null; contVoiceTranscript = ''; contVoiceStopping = false; contVoiceAutoRestarts = 0;
-  if (cb) cb(text);
-}
-
 function voiceFlowCapture() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR || voiceFlowStep < 0) return;
   const step = VOICE_FLOW[voiceFlowStep];
-
-  // El nombre se dicta con escucha continua (no se corta en la pausa
-  // natural entre apellido y nombre) — ver runContinuousVoice.
-  if (step.id === 'pf-nombre') {
-    runContinuousVoice(step.q, text => {
-      if (voiceFlowStep < 0) return; // se cerró el dictado guiado mientras escuchaba
-      if (/omitir|saltar/i.test(text)) { voiceFlowNext(); return; }
-      const el = document.getElementById(step.id);
-      if (el && text) { el.value = text; el.dispatchEvent(new Event('input')); }
-      voiceFlowNext();
-    });
-    return;
-  }
 
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   voiceRecognition = new SR();
@@ -5993,12 +5958,6 @@ function stopGuidedVoice() {
   voiceFlowStep = -1;
   speechSynthesis.cancel();
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
-  if (contVoiceRecognition) {
-    contVoiceOnFinish = null;
-    discardRecognition(contVoiceRecognition);
-    contVoiceRecognition = null;
-    contVoiceStopping = false; contVoiceTranscript = ''; contVoiceAutoRestarts = 0;
-  }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
   const btn = document.getElementById('btn-guided-voice');
@@ -6011,19 +5970,6 @@ function startVoice(targetId) {
   if (!SpeechRecognition) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
   const el = document.getElementById(targetId);
   if (!el) return;
-
-  // El nombre se dicta con escucha continua (no se corta en la pausa
-  // natural entre apellido y nombre) — ver runContinuousVoice.
-  if (targetId === 'pf-nombre') {
-    const base = el.value ? el.value + ' ' : '';
-    runContinuousVoice('Apellido y nombre', text => {
-      if (!text) return;
-      el.value = base + text;
-      el.dispatchEvent(new Event('input'));
-      showToast('✓ Voz reconocida');
-    });
-    return;
-  }
 
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   voiceRecognition = new SpeechRecognition();
