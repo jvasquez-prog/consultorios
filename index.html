@@ -604,7 +604,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     <!-- Botón primario: dictado libre -->
     <button type="button" id="btn-free-voice" onclick="startFreeDictation()"
       style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--blue2);border:none;border-radius:var(--radius);padding:14px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-bottom:8px;font-family:'DM Sans',sans-serif;letter-spacing:.3px">
-      🎤 Hablar libremente
+      🎤 Decir los datos, uno seguido del otro
     </button>
     <!-- Guía rápida para que el reconocimiento de voz entienda mejor -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:11.5px;color:var(--text2);line-height:1.55">
@@ -622,6 +622,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
       <button type="button" id="btn-guided-voice" onclick="startGuidedVoice()"
         style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;text-decoration:underline;font-family:'DM Sans',sans-serif">
         Preferís campo por campo → Dictado guiado
+      </button>
+      <button type="button" id="btn-guided-voice-picker" onclick="openGuidedVoicePicker()" title="Elegir qué campos preguntar en el dictado guiado"
+        style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;text-decoration:underline;margin-left:8px;font-family:'DM Sans',sans-serif">
+        ⚙ Elegir campos
       </button>
     </div>
 
@@ -3405,7 +3409,7 @@ const INFO_CONTENT = {
 </ul>
 <p><strong>Carga por voz:</strong> en vez de tipear, podés tocar el micrófono y decir los datos en voz alta. Hay dos formas:</p>
 <ul style="padding-left:18px;margin:6px 0">
-  <li><strong>🎤 Hablar libremente:</strong> decís todos los datos seguidos ("Javier Vasquez, doce años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...") y la app detecta cada dato y lo carga en el campo que corresponde. Al terminar, mostrás en verde lo que se cargó bien; lo que falte podés completarlo a mano o volver a dictarlo. Se puede terminar el dictado tocando "■ Listo" o directamente diciendo la palabra <strong>"listo"</strong>.</li>
+  <li><strong>🎤 Decir los datos, uno seguido del otro:</strong> decís todos los datos seguidos ("Javier Vasquez, doce años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...") y la app detecta cada dato y lo carga en el campo que corresponde. Al terminar, mostrás en verde lo que se cargó bien; lo que falte podés completarlo a mano o volver a dictarlo. Se puede terminar el dictado tocando "■ Listo" o directamente diciendo la palabra <strong>"listo"</strong>.</li>
   <li><strong>Dictado guiado:</strong> la app te va preguntando campo por campo (nombre, DNI, sexo, fecha de nacimiento, etc.) y vos respondés de a uno. Es más lento pero más ordenado.</li>
 </ul>
 
@@ -5417,9 +5421,15 @@ function extractEntities(text) {
     r.fnacHint = `${n} año${n!==1?'s':''}`;
   }
 
-  // Obra social
+  // Obra social — casi todas las opciones son siglas (OSDE, PAMI, IOMA...).
+  // El dictado de iOS (a diferencia del de Android/Chrome, que las transcribe
+  // pegadas: "osde") suele deletrearlas letra por letra con espacios o puntos
+  // ("o. s. d. e."), así que nunca aparecían juntas y esta comparación por
+  // substring nunca matcheaba — antes de comparar, se pega cualquier corrida
+  // de 2 o más letras sueltas separadas sólo por espacio o punto.
+  const tlJoined = tl.replace(/\b[a-z]\b(?:[\s.]+\b[a-z]\b){1,6}/g, m => m.replace(/[^a-z]/g, ''));
   for (const os of OBRAS_SOCIALES) {
-    if (tl.includes(norm(os))) { r.obraSoc = os; break; }
+    if (tlJoined.includes(norm(os))) { r.obraSoc = os; break; }
   }
 
   // Al dictar de corrido (sin comas/puntos, como suele transcribir la Web
@@ -5735,8 +5745,10 @@ function startFreeDictation() {
   freeDictTranscript = ''; freeDictStopping = false; freeDictAutoRestarts = 0;
   const btn = document.getElementById('btn-free-voice');
   const guided = document.getElementById('btn-guided-voice');
+  const picker = document.getElementById('btn-guided-voice-picker');
   if (btn)    btn.style.display    = 'none';
   if (guided) guided.style.display = 'none';
+  if (picker) picker.style.display = 'none';
   const banner = document.getElementById('voice-flow-banner');
   if (banner) {
     banner.style.display = 'block';
@@ -5780,8 +5792,10 @@ function resetFreeDictation() {
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
   const btn    = document.getElementById('btn-free-voice');
   const guided = document.getElementById('btn-guided-voice');
+  const picker = document.getElementById('btn-guided-voice-picker');
   if (btn)    btn.style.display    = '';
   if (guided) guided.style.display = '';
+  if (picker) picker.style.display = '';
 }
 
 // ===== VOZ (Web Speech API) =====
@@ -5800,7 +5814,33 @@ let voiceFlowManualFields = new Set();
 // Derivado de PAC_FIELDS: el orden y las preguntas del dictado guiado salen
 // de la misma definición única de campos (ver arriba, junto a FP). Los
 // campos sin voiceQ (hoy sólo Email) simplemente no entran al dictado guiado.
-const VOICE_FLOW = PAC_FIELDS.filter(f => f.voiceQ).map(f => ({ id: f.id, q: f.voiceQ, type: f.type, label: f.label, longText: f.longText }));
+// VOICE_FLOW_FIELDS es la lista completa de candidatos (lo que muestra el
+// selector de campos, sin importar el preset activo); VOICE_FLOW es la
+// sesión actual, armada por buildVoiceFlow() según lo que el usuario eligió.
+const VOICE_FLOW_FIELDS = PAC_FIELDS.filter(f => f.voiceQ);
+let VOICE_FLOW = [];
+
+const GUIDED_VOICE_PRESET_KEY = 'synapsis_guided_voice_fields';
+// null = sin preset guardado → preguntar todos los campos (comportamiento
+// de siempre). Sólo si el usuario personalizó la selección alguna vez desde
+// "⚙ Elegir campos" queda un array de ids acá.
+function getGuidedVoicePreset() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GUIDED_VOICE_PRESET_KEY) || 'null');
+    return Array.isArray(raw) && raw.length ? raw : null;
+  } catch(e) { return null; }
+}
+function setGuidedVoicePreset(ids) {
+  try { localStorage.setItem(GUIDED_VOICE_PRESET_KEY, JSON.stringify(ids)); } catch(e) {}
+}
+function clearGuidedVoicePreset() {
+  try { localStorage.removeItem(GUIDED_VOICE_PRESET_KEY); } catch(e) {}
+}
+function buildVoiceFlow() {
+  const preset = getGuidedVoicePreset();
+  const fields = preset ? VOICE_FLOW_FIELDS.filter(f => preset.includes(f.id)) : VOICE_FLOW_FIELDS;
+  return fields.map(f => ({ id: f.id, q: f.voiceQ, type: f.type, label: f.label, longText: f.longText }));
+}
 
 // Convierte números en palabras ("quince", "dos mil veintidós") a dígitos.
 // La Web Speech API en es-AR no siempre transcribe los números dichos en el
@@ -6200,12 +6240,16 @@ function voiceFlowNext() {
 function startGuidedVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
+  VOICE_FLOW = buildVoiceFlow();
+  if (!VOICE_FLOW.length) { showToast('No hay campos elegidos para el dictado guiado'); return; }
   voiceFlowStep = 0;
   voiceFlowConfirming = false;
   voiceFlowConfirmRetries = 0;
   voiceFlowManualFields = new Set();
   const btn = document.getElementById('btn-guided-voice');
+  const picker = document.getElementById('btn-guided-voice-picker');
   if (btn) btn.style.display = 'none';
+  if (picker) picker.style.display = 'none';
   updateVoiceFlowBanner();
   const intro = editingId ? 'Vamos a editar los datos del paciente. ' : 'Vamos a cargar un nuevo paciente. ';
   speak(intro + VOICE_FLOW[0].q, voiceFlowCapture);
@@ -6221,8 +6265,69 @@ function stopGuidedVoice() {
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
   const btn = document.getElementById('btn-guided-voice');
+  const picker = document.getElementById('btn-guided-voice-picker');
   if (btn) btn.style.display = '';
+  if (picker) picker.style.display = '';
   VOICE_FLOW.forEach(s => { const el=document.getElementById(s.id); if(el) el.style.outline=''; });
+}
+
+// ===== Selector de campos del dictado guiado (⚙ Elegir campos) =====
+// Reusa el mismo #voice-flow-banner que el resto de los flujos de voz. Los
+// checkboxes marcados se leen directo del DOM al confirmar — no hace falta
+// estado global propio, sólo mientras el selector está abierto.
+function openGuidedVoicePicker() {
+  const banner = document.getElementById('voice-flow-banner');
+  if (!banner) return;
+  const btnFree   = document.getElementById('btn-free-voice');
+  const btnGuided = document.getElementById('btn-guided-voice');
+  const btnPicker = document.getElementById('btn-guided-voice-picker');
+  if (btnFree)   btnFree.style.display   = 'none';
+  if (btnGuided) btnGuided.style.display = 'none';
+  if (btnPicker) btnPicker.style.display = 'none';
+  const preset = getGuidedVoicePreset();
+  const rows = VOICE_FLOW_FIELDS.map(f => {
+    const checked = !preset || preset.includes(f.id);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 2px;font-size:13px;color:var(--text)">
+      <input type="checkbox" data-guided-field="${f.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0">
+      ${f.icon} ${f.label}
+    </label>`;
+  }).join('');
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-size:13px;font-weight:700;color:var(--blue2)">⚙ Elegir campos del dictado guiado</span>
+      <button onclick="closeGuidedVoicePicker()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">El resto de los campos los completás a mano o con "🎤 Decir los datos, uno seguido del otro".</div>
+    <div>${rows}</div>
+    <button onclick="confirmGuidedVoicePicker()" style="width:100%;background:var(--blue2);border:none;border-radius:var(--radius-sm);padding:9px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:8px">Guardar y empezar</button>
+    <button onclick="resetGuidedVoicePreset()" style="width:100%;background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;text-decoration:underline;margin-top:8px;font-family:'DM Sans',sans-serif">Restablecer (preguntar todos)</button>`;
+}
+
+function closeGuidedVoicePicker() {
+  const banner = document.getElementById('voice-flow-banner');
+  if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
+  const btnFree   = document.getElementById('btn-free-voice');
+  const btnGuided = document.getElementById('btn-guided-voice');
+  const btnPicker = document.getElementById('btn-guided-voice-picker');
+  if (btnFree)   btnFree.style.display   = '';
+  if (btnGuided) btnGuided.style.display = '';
+  if (btnPicker) btnPicker.style.display = '';
+}
+
+function confirmGuidedVoicePicker() {
+  const banner = document.getElementById('voice-flow-banner');
+  if (!banner) return;
+  const ids = [...banner.querySelectorAll('input[data-guided-field]:checked')].map(el => el.dataset.guidedField);
+  if (!ids.length) { showToast('Elegí al menos un campo'); return; }
+  setGuidedVoicePreset(ids);
+  closeGuidedVoicePicker();
+  startGuidedVoice();
+}
+
+function resetGuidedVoicePreset() {
+  clearGuidedVoicePreset();
+  openGuidedVoicePicker();
 }
 
 function startVoice(targetId) {
