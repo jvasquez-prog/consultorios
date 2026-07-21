@@ -962,6 +962,55 @@ const FP = {
   archivos:   'fldJKNtSEnV4NRu65'   // Archivos
 };
 
+// ===== Definición única de los campos del formulario de PACIENTES =====
+// Antes esta info vivía repetida (y a veces desincronizada) en VOICE_FLOW,
+// el resumen de "Hablar libremente", applyExtraction() y savePac() — cada
+// uno con su propia lista de ids escrita a mano. Un campo nuevo, o cambiado
+// (como pasó al separar "Apellido y Nombre" en dos inputs), se actualizaba
+// en algunos de esos lugares y no en otro, que fue la causa real de más de
+// un bug de reconocimiento de voz. Ahora hay una sola fuente de verdad:
+// cada consumidor (guiado, resumen, aplicar extracción, guardar) recorre
+// esta misma lista en vez de mantener la suya.
+//   rKey:     nombre de la propiedad usada en el objeto de extractEntities()
+//   fpKey:    key en FP (campo de Airtable) — ausente en los "combined"
+//   combined: Apellido/Nombre no tienen fpKey propio: se combinan a mano
+//             en savePac() en el único campo FP.nombre ("Apellido y Nombre")
+//   trim:     si hay que recortar espacios antes de guardar
+//   isSelect: si el input es un <select> (aplica por texto de opción, no por índice)
+//   parseSave:transformación antes de mandar a Airtable (ej. DNI a número)
+//   voiceQ:   pregunta hablada en el dictado guiado — si no tiene, ese campo
+//             no forma parte del dictado guiado (ej. Email)
+const PAC_FIELDS = [
+  { id:'pf-apellido',  rKey:'apellido',  label:'Apellido',            icon:'👤',  type:'text', required:true, combined:true, voiceQ:'Apellido del paciente' },
+  { id:'pf-nombre',    rKey:'nombre',    label:'Nombre',              icon:'👤',  type:'text', required:true, combined:true, voiceQ:'Nombre del paciente' },
+  { id:'pf-dni',       rKey:'dni',       label:'DNI',                 icon:'🪪',  type:'dni',  fpKey:'dni',        parseSave: v => parseFloat(v), voiceQ:'DNI del paciente' },
+  { id:'pf-sexo',      rKey:'sexo',      label:'Sexo',                icon:'⚧',  type:'sexo', fpKey:'sexo',       isSelect:true, voiceQ:'Sexo: masculino, femenino, u otro' },
+  { id:'pf-fnac',      rKey:'fnac',      label:'Fecha de nacimiento', icon:'📅',  type:'date', fpKey:'fnac',       required:true, voiceQ:'Fecha de nacimiento. Decí sólo día, mes y año en números — por ejemplo: quince, tres, dos mil veintidós' },
+  { id:'pf-os',        rKey:'obraSoc',   label:'Obra social',         icon:'🏥',  type:'text', fpKey:'obraSoc',    trim:true, voiceQ:'Obra social' },
+  { id:'pf-domicilio', rKey:'domicilio', label:'Domicilio',           icon:'🏠',  type:'text', fpKey:'domicilio',  trim:true, voiceQ:'Domicilio', longText:true },
+  { id:'pf-tutor',     rKey:'tutor',     label:'Tutor',               icon:'👨‍👧', type:'text', fpKey:'tutor',      trim:true, voiceQ:'Nombre del tutor o responsable', longText:true },
+  { id:'pf-tel',       rKey:'tel',       label:'Teléfono',            icon:'📞',  type:'text', fpKey:'telTutor',   trim:true, voiceQ:'Teléfono del tutor' },
+  { id:'pf-email',     rKey:'email',     label:'Email',               icon:'📧',  type:'text', fpKey:'emailTutor', trim:true },
+  { id:'pf-diag',      rKey:'diag',      label:'Diagnóstico',         icon:'🩺',  type:'text', fpKey:'diag',       trim:true, voiceQ:'Diagnóstico principal' },
+  { id:'pf-ant',       rKey:'antec',     label:'Antecedentes',        icon:'📋',  type:'text', fpKey:'antec',      trim:true, voiceQ:'Antecedentes relevantes', longText:true },
+  { id:'pf-notas',     rKey:'notas',     label:'Notas',               icon:'📝',  type:'text', fpKey:'notas',      trim:true, voiceQ:'Notas clínicas', longText:true },
+];
+
+// Precarga el formulario de paciente a partir de un registro de Airtable —
+// usado tanto al editar desde el detalle (editCurrentPac) como al editar
+// desde un duplicado detectado al guardar (openEditPacById). Antes estaba
+// copiado dos veces, línea por línea, en ambas funciones.
+function prefillPacForm(rec) {
+  const nb = splitNombreCompleto(valP(rec, FP.nombre));
+  document.getElementById('pf-apellido').value = nb.apellido;
+  document.getElementById('pf-nombre').value    = nb.nombre;
+  PAC_FIELDS.forEach(f => {
+    if (f.combined || !f.fpKey) return;
+    const e = document.getElementById(f.id);
+    if (e) e.value = valP(rec, FP[f.fpKey]) || '';
+  });
+}
+
 // CONSULTAS
 const TC = 'tblQKFIHLSVAlpxn3';
 const FC = {
@@ -2310,20 +2359,7 @@ function editCurrentPac() {
   document.getElementById('pac-new-btn-del').style.display = 'block';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar cambios';
   document.getElementById('pac-new-error').innerHTML = '';
-  { const nb = splitNombreCompleto(valP(rec, FP.nombre));
-    document.getElementById('pf-apellido').value = nb.apellido;
-    document.getElementById('pf-nombre').value    = nb.nombre; }
-  document.getElementById('pf-fnac').value      = valP(rec, FP.fnac)       || '';
-  document.getElementById('pf-dni').value       = valP(rec, FP.dni)        || '';
-  document.getElementById('pf-sexo').value      = valP(rec, FP.sexo)       || '';
-  document.getElementById('pf-os').value        = valP(rec, FP.obraSoc)    || '';
-  document.getElementById('pf-domicilio').value = valP(rec, FP.domicilio)  || '';
-  document.getElementById('pf-tutor').value     = valP(rec, FP.tutor)      || '';
-  document.getElementById('pf-tel').value       = valP(rec, FP.telTutor)   || '';
-  document.getElementById('pf-email').value     = valP(rec, FP.emailTutor) || '';
-  document.getElementById('pf-diag').value      = valP(rec, FP.diag)       || '';
-  document.getElementById('pf-ant').value       = valP(rec, FP.antec)      || '';
-  document.getElementById('pf-notas').value     = valP(rec, FP.notas)      || '';
+  prefillPacForm(rec);
   document.getElementById('pf-archivos').value  = '';
   document.getElementById('pf-archivos-lbl').textContent = '📎 Agregar más archivos...';
   document.getElementById('pf-archivos-list').innerHTML = '';
@@ -2492,11 +2528,7 @@ function openNewPac() {
   document.getElementById('pac-new-btn-del').style.display = 'none';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar paciente';
   document.getElementById('pac-new-error').innerHTML = '';
-  ['pf-apellido','pf-nombre','pf-diag','pf-ant','pf-notas','pf-os','pf-domicilio','pf-tutor','pf-email'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
-  ['pf-dni'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
-  ['pf-sexo'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
-  document.getElementById('pf-fnac').value = '';
-  document.getElementById('pf-tel').value = '';
+  PAC_FIELDS.forEach(f => { const e = document.getElementById(f.id); if (e) e.value = ''; });
   document.getElementById('pf-archivos').value = '';
   document.getElementById('pf-archivos-lbl').textContent = '📎 Seleccionar archivos (JPG, PNG, PDF, DOC...)';
   document.getElementById('pf-archivos-list').innerHTML = '';
@@ -2513,20 +2545,7 @@ function openEditPacById(recId) {
   document.getElementById('pac-new-btn-del').style.display = 'block';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar cambios';
   document.getElementById('pac-new-error').innerHTML = '';
-  { const nb = splitNombreCompleto(valP(rec, FP.nombre));
-    document.getElementById('pf-apellido').value = nb.apellido;
-    document.getElementById('pf-nombre').value    = nb.nombre; }
-  document.getElementById('pf-fnac').value      = valP(rec, FP.fnac)       || '';
-  document.getElementById('pf-dni').value       = valP(rec, FP.dni)        || '';
-  document.getElementById('pf-sexo').value      = valP(rec, FP.sexo)       || '';
-  document.getElementById('pf-os').value        = valP(rec, FP.obraSoc)    || '';
-  document.getElementById('pf-domicilio').value = valP(rec, FP.domicilio)  || '';
-  document.getElementById('pf-tutor').value     = valP(rec, FP.tutor)      || '';
-  document.getElementById('pf-tel').value       = valP(rec, FP.telTutor)   || '';
-  document.getElementById('pf-email').value     = valP(rec, FP.emailTutor) || '';
-  document.getElementById('pf-diag').value      = valP(rec, FP.diag)       || '';
-  document.getElementById('pf-ant').value       = valP(rec, FP.antec)      || '';
-  document.getElementById('pf-notas').value     = valP(rec, FP.notas)      || '';
+  prefillPacForm(rec);
   document.getElementById('pf-archivos').value  = '';
   document.getElementById('pf-archivos-lbl').textContent = '📎 Agregar más archivos...';
   document.getElementById('pf-archivos-list').innerHTML = '';
@@ -2575,23 +2594,25 @@ async function savePac(force = false) {
   // Se guarda combinado en un solo campo de Airtable ("Apellido y Nombre"),
   // igual que antes de separar el formulario en dos inputs.
   const nombre = `${apellido}, ${nombreSolo}`;
+  const dni = document.getElementById('pf-dni').value; // se usa también en la validación de duplicados, más abajo
   const fields = {};
   fields[FP.nombre] = nombre;
-  if (fnac) fields[FP.fnac] = fnac;
-  const dni   = document.getElementById('pf-dni').value;        if (dni)   fields[FP.dni]        = parseFloat(dni);
-  const sexo  = document.getElementById('pf-sexo').value;       if (sexo)  fields[FP.sexo]       = sexo;
-  const os    = document.getElementById('pf-os').value.trim();  if (os)    fields[FP.obraSoc]    = os;
+  fields[FP.fnac] = fnac;
+  // El resto de los campos (todos menos Apellido/Nombre, que se combinan
+  // arriba a mano) sale de PAC_FIELDS en vez de repetir una línea por campo.
+  PAC_FIELDS.forEach(f => {
+    if (f.combined || !f.fpKey) return;
+    const el = document.getElementById(f.id);
+    if (!el) return;
+    let v = el.value;
+    if (f.trim) v = v.trim();
+    if (!v) return;
+    fields[FP[f.fpKey]] = f.parseSave ? f.parseSave(v) : v;
+  });
   // El campo Estado ya no se pide en el formulario: los pacientes nuevos
   // quedan "Activo" por defecto (lo usan los recordatorios de vacunas y
   // controles); al editar no se toca para no pisar un "Alta" ya cargado.
   if (!editingId) fields[FP.estado] = 'Activo';
-  const dom   = document.getElementById('pf-domicilio').value.trim(); if (dom) fields[FP.domicilio] = dom;
-  const tut   = document.getElementById('pf-tutor').value.trim();     if (tut) fields[FP.tutor]    = tut;
-  const tel   = document.getElementById('pf-tel').value.trim();       if (tel) fields[FP.telTutor] = tel;
-  const email = document.getElementById('pf-email').value.trim();     if (email) fields[FP.emailTutor] = email;
-  const diag  = document.getElementById('pf-diag').value.trim();      if (diag) fields[FP.diag]     = diag;
-  const ant   = document.getElementById('pf-ant').value.trim();       if (ant)  fields[FP.antec]    = ant;
-  const notas = document.getElementById('pf-notas').value.trim();     if (notas) fields[FP.notas]   = notas;
 
   const btn = document.getElementById('pac-new-btn-save');
   document.getElementById('pac-new-error').innerHTML = '';
@@ -5316,12 +5337,27 @@ let freeDictAutoRestarts  = 0;
 // esa ventana, el paciente queda sin nombre. savePac() consulta este flag.
 let freeDictProcessing    = false;
 const FREE_DICT_MAX_AUTO_RESTARTS = 4;
+// Último resultado de extractEntities() mostrado en el resumen — permite que
+// retryVoiceField() actualice un solo campo y vuelva a renderizar el resumen
+// sin tener que re-dictar todo de nuevo.
+let lastExtractionResult = null;
 
 const OBRAS_SOCIALES = [
   'PAMI','IOMA','OSDE','Galeno','Swiss Medical','OSECAC','Medife','UPCN',
   'Sancor Salud','Federada','OMINT','ACCORD','IOSPER','OSPRERA','AMSA',
   'OSAM','OSPEC','OSDEP','OS Camioneros','OSCHOCA','Particular','particular'
 ];
+
+// Aplica `validate` a un valor ya extraído por regex; si valida, lo guarda en
+// `r[rKey]`, si no, guarda el intento crudo en `r[rKey+'FailedRaw']` en vez
+// de perderlo en silencio — generaliza a cualquier campo el mismo patrón que
+// antes sólo existía para fecha de nacimiento (`_fnacFailedRaw`), así el
+// resumen puede avisar "escuché algo pero no lo entendí" en cada uno.
+function tryExtractField(r, rKey, raw, validate) {
+  if (raw === undefined || raw === null) return;
+  const val = validate(raw);
+  if (val) r[rKey] = val; else r[rKey + 'FailedRaw'] = raw;
+}
 
 function extractEntities(text) {
   const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -5340,8 +5376,7 @@ function extractEntities(text) {
   // de 7-8 dígitos ya pegado.
   const dniKwM = text.match(/dni[:\s]+([\d\s.\-]{6,25})/i);
   if (dniKwM) {
-    const digits = dniKwM[1].replace(/\D/g,'');
-    if (digits.length >= 7 && digits.length <= 8) r.dni = digits;
+    tryExtractField(r, 'dni', dniKwM[1].replace(/\D/g,''), digits => (digits.length >= 7 && digits.length <= 8) ? digits : null);
   }
   if (!r.dni) {
     const dniM = text.match(/\b(\d{7,8})\b/);
@@ -5351,8 +5386,7 @@ function extractEntities(text) {
   // Teléfono — mismo problema de agrupación que el DNI.
   const telKwM = text.match(/(?:tel[eé]fono|celular|cel)[:\s]+([\d\s.\-]{6,25})/i);
   if (telKwM) {
-    const digits = telKwM[1].replace(/\D/g,'');
-    if (digits.length >= 8 && digits.length <= 11 && digits !== r.dni) r.tel = digits;
+    tryExtractField(r, 'tel', telKwM[1].replace(/\D/g,''), digits => (digits.length >= 8 && digits.length <= 11 && digits !== r.dni) ? digits : null);
   }
   if (!r.tel) {
     const telSep = text.match(/\b(\d{2,4}[\s\-]?\d{3,4}[\s\-]?\d{4})\b/);
@@ -5402,13 +5436,8 @@ function extractEntities(text) {
   // se reconoce, pisa la aproximación por edad porque es más precisa.
   const fnacM = text.match(/(?:fecha de nacimiento|fnac|naci[oó]|nacida?)[:\s]+([^.]{4,60})/i);
   if (fnacM) {
-    const fnacRaw = trimToNextField(fnacM[1]);
-    const d = parseVoiceDate(fnacRaw);
-    if (d) { r.fnac = d; r.fnacHint = null; }
-    // Si se dijo la palabra clave pero no se pudo interpretar la fecha, se
-    // guarda lo escuchado para avisar en el resumen — antes esto fallaba
-    // en silencio y quedaba igual que si nunca se hubiera dicho nada.
-    else r._fnacFailedRaw = fnacRaw;
+    tryExtractField(r, 'fnac', trimToNextField(fnacM[1]), parseVoiceDate);
+    if (r.fnac) r.fnacHint = null;
   }
 
   // Apellido / Nombre dictados con la palabra clave delante (como sugiere
@@ -5443,14 +5472,16 @@ function extractEntities(text) {
   // y pegar todo sin espacios para reconstruir la dirección.
   const emailM = text.match(/(?:correo electr[oó]nico|correo|e[\s-]?mail|mail)[:\s]+([^,]{3,100})/i);
   if (emailM) {
-    let raw = trimToNextField(emailM[1]).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-    raw = raw
-      .replace(/\bguion\s+bajo\b/g, '_')
-      .replace(/\barroba\b/g, '@')
-      .replace(/\bpunto\b/g, '.')
-      .replace(/\bguion\b/g, '-')
-      .replace(/\s+/g, '');
-    if (/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(raw)) r.email = raw;
+    const raw = trimToNextField(emailM[1]).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    tryExtractField(r, 'email', raw, s => {
+      const translated = s
+        .replace(/\bguion\s+bajo\b/g, '_')
+        .replace(/\barroba\b/g, '@')
+        .replace(/\bpunto\b/g, '.')
+        .replace(/\bguion\b/g, '-')
+        .replace(/\s+/g, '');
+      return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(translated) ? translated : null;
+    });
   }
 
   // Diagnóstico — después de keyword ("principal"/"presuntivo" es parte de la
@@ -5496,22 +5527,27 @@ function extractEntities(text) {
   return r;
 }
 
+// Escribe un valor en un <input>/<textarea>. Función compartida por
+// applyExtraction, captureTypedField y retryVoiceField — antes cada una
+// tenía su propia copia inline de este mismo closure.
+function setFieldValue(id, v) {
+  const e = document.getElementById(id);
+  if (e && v !== undefined) { e.value = v; e.dispatchEvent(new Event('input')); }
+}
+// Selecciona una opción de un <select> por su texto visible (no por índice,
+// porque el orden de las opciones no está garantizado). Misma razón que setFieldValue.
+function selectFieldByText(id, v) {
+  const e = document.getElementById(id);
+  if (!e || !v) return;
+  for (let i = 0; i < e.options.length; i++) if (e.options[i].text === v) { e.selectedIndex = i; e.dispatchEvent(new Event('input')); break; }
+}
+
 function applyExtraction(r) {
-  const set = (id, v) => { const e=document.getElementById(id); if(e&&v!==undefined){e.value=v;e.dispatchEvent(new Event('input'));} };
-  const sel = (id, v) => { const e=document.getElementById(id); if(!e||!v) return; for(let i=0;i<e.options.length;i++) if(e.options[i].text===v){e.selectedIndex=i;break;} };
-  if (r.apellido) set('pf-apellido', r.apellido);
-  if (r.nombre)  set('pf-nombre', r.nombre);
-  if (r.dni)     set('pf-dni',    r.dni);
-  if (r.fnac)    set('pf-fnac',   r.fnac);
-  if (r.sexo)    sel('pf-sexo',   r.sexo);
-  if (r.obraSoc) set('pf-os',     r.obraSoc);
-  if (r.tutor)   set('pf-tutor',  r.tutor);
-  if (r.tel)     set('pf-tel',    r.tel);
-  if (r.domicilio) set('pf-domicilio', r.domicilio);
-  if (r.email)   set('pf-email',  r.email);
-  if (r.diag)    set('pf-diag',   r.diag);
-  if (r.antec)   set('pf-ant',    r.antec);
-  if (r.notas)   set('pf-notas',  r.notas);
+  PAC_FIELDS.forEach(f => {
+    const v = r[f.rKey];
+    if (!v) return;
+    if (f.isSelect) selectFieldByText(f.id, v); else setFieldValue(f.id, v);
+  });
 }
 
 // Borra un campo del formulario con un solo toque (llamado desde las chips
@@ -5525,27 +5561,62 @@ function clearVoiceField(targetId, chipEl) {
   showToast('Campo borrado');
 }
 
+// Redicta un solo campo del resumen de "hablar libremente" sin perder el
+// resto de lo ya cargado (antes la única opción era volver a dictar todo).
+// Pasa por captureTypedField/parseVoiceValue — el mismo parseo tipado del
+// dictado guiado — así pf-sexo y pf-fnac quedan bien parseados en vez de
+// recibir texto crudo, algo que startVoice() solo no garantiza.
+function retryVoiceField(fieldId) {
+  const f = PAC_FIELDS.find(x => x.id === fieldId);
+  if (!f) return;
+  showToast('🎤 Escuchando — ' + f.label + '...');
+  captureTypedField(f, result => {
+    if (result.skip) { showToast('No se detectó nada nuevo'); return; }
+    if (result.ok) {
+      if (f.isSelect) selectFieldByText(f.id, result.value); else setFieldValue(f.id, result.value);
+      if (lastExtractionResult) delete lastExtractionResult[f.rKey + 'FailedRaw'];
+      showToast('✓ ' + f.label + ' actualizado');
+    } else {
+      if (lastExtractionResult) lastExtractionResult[f.rKey + 'FailedRaw'] = result.raw;
+      showToast('No entendí — probá de nuevo o completalo a mano');
+    }
+    if (lastExtractionResult) showExtractionSummary(lastExtractionResult);
+  });
+}
+
 function showExtractionSummary(r) {
   const banner = document.getElementById('voice-flow-banner');
   if (!banner) return;
-  const FIELDS = [
-    {k:'apellido', l:'Apellido',    i:'👤', t:'pf-apellido'},
-    {k:'nombre',  l:'Nombre',       i:'👤', t:'pf-nombre'},
-    {k:'sexo',    l:'Sexo',         i:'⚧', t:'pf-sexo'},
-    {k:'fnac',    l:'FNac',         i:'📅', t:'pf-fnac', d: r.fnacHint},
-    {k:'dni',     l:'DNI',          i:'🪪', t:'pf-dni'},
-    {k:'obraSoc', l:'Obra social',  i:'🏥', t:'pf-os'},
-    {k:'tutor',   l:'Tutor',        i:'👨‍👧', t:'pf-tutor'},
-    {k:'tel',     l:'Teléfono',     i:'📞', t:'pf-tel'},
-    {k:'domicilio', l:'Domicilio',  i:'🏠', t:'pf-domicilio'},
-    {k:'email',   l:'Email',        i:'📧', t:'pf-email'},
-    {k:'diag',    l:'Diagnóstico',  i:'🩺', t:'pf-diag'},
-    {k:'antec',   l:'Antecedentes', i:'📋', t:'pf-ant'},
-    {k:'notas',   l:'Notas',        i:'📝', t:'pf-notas'},
-  ];
-  const found   = FIELDS.filter(f => r[f.k]);
-  const missing = FIELDS.filter(f => !r[f.k]).map(f=>f.l);
-  const chips   = found.map(f=>`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 9px;font-size:11px;color:var(--green);margin:2px">${f.i} <b>${(f.d||String(r[f.k])).slice(0,22)}</b> <span onclick="clearVoiceField('${f.t}', this.parentElement)" title="Borrar campo" style="cursor:pointer;color:var(--red);font-weight:700;padding:0 2px">✕</span></span>`).join('');
+  // "Detectado" se define por lo que HAY AHORA en el formulario, no sólo por
+  // lo que se extrajo en esta pasada puntual de dictado (r) — si no, al
+  // redictar sólo los campos que faltaban (o al editar un paciente que ya
+  // tenía datos cargados), todo lo que ya estaba completo de antes aparecía
+  // como "sin detectar" acá, aunque el campo tuviera el valor correcto.
+  const currentVal = f => { const e = document.getElementById(f.id); return e ? (e.value || '').trim() : ''; };
+  const found    = PAC_FIELDS.filter(f => currentVal(f));
+  const missing  = PAC_FIELDS.filter(f => !currentVal(f));
+  const nearMiss = missing.filter(f => r[f.rKey + 'FailedRaw']);
+
+  // Chip verde (campo cargado, con 🎤 para redictar y ✕ para borrar) o
+  // píldora neutra (campo sin detectar, con 🎤 para dictarlo directamente) —
+  // mismo template para no duplicar el HTML entre los dos estados.
+  const renderChip = (f, filled) => {
+    const label = filled ? ((f.id === 'pf-fnac' && r.fnacHint) || currentVal(f)).slice(0,22) : f.label;
+    const bg     = filled ? 'rgba(34,197,94,.12)'  : 'rgba(148,163,184,.12)';
+    const border = filled ? 'rgba(34,197,94,.3)'   : 'rgba(148,163,184,.3)';
+    const color  = filled ? 'var(--green)'         : 'var(--text3)';
+    const retryBtn = `<span onclick="retryVoiceField('${f.id}')" title="Dictar este campo" style="cursor:pointer;padding:0 2px">🎤</span>`;
+    const clearBtn = filled ? `<span onclick="clearVoiceField('${f.id}', this.parentElement)" title="Borrar campo" style="cursor:pointer;color:var(--red);font-weight:700;padding:0 2px">✕</span>` : '';
+    return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg};border:1px solid ${border};border-radius:20px;padding:2px 9px;font-size:11px;color:${color};margin:2px">${f.icon} <b>${label}</b> ${retryBtn}${clearBtn}</span>`;
+  };
+  const chips        = found.map(f => renderChip(f, true)).join('');
+  const missingChips = missing.map(f => renderChip(f, false)).join('');
+  // Aviso ámbar accionable por cada campo donde se detectó la palabra clave
+  // pero el valor no validó (antes esto sólo se avisaba para fecha de
+  // nacimiento; ahora es genérico vía "<rKey>FailedRaw", ver tryExtractField).
+  const nearMissLines = nearMiss.map(f =>
+    `<div style="font-size:11px;color:var(--amber);margin-bottom:6px;cursor:pointer" onclick="retryVoiceField('${f.id}')">⚠ Se escuchó algo para "${f.label}" ("${escHtml(r[f.rKey + 'FailedRaw'])}") pero no se pudo interpretar — tocá para redictarlo o completalo a mano.</div>`
+  ).join('');
   // La voz se puede reactivar en cualquier momento para completar o corregir:
   // startFreeDictation() no borra los campos ya cargados, sólo agrega lo que
   // se detecte en la nueva pasada — por eso el CTA cambia según falte algo o no.
@@ -5560,8 +5631,8 @@ function showExtractionSummary(r) {
       <button onclick="resetFreeDictation()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1">✕</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">${chips}</div>
-    ${missing.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Sin detectar: ${missing.join(', ')} — decilos por voz o completalos a mano</div>` : ''}
-    ${(!r.fnac && r._fnacFailedRaw) ? `<div style="font-size:11px;color:var(--amber);margin-bottom:8px">⚠ Se escuchó una fecha ("${escHtml(r._fnacFailedRaw)}") pero no se pudo interpretar — probá tocar el campo y elegirla del calendario.</div>` : ''}
+    ${missingChips ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">Sin detectar — tocá 🎤 para dictar ese campo:</div><div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">${missingChips}</div>` : ''}
+    ${nearMissLines}
     ${voiceAgainBtn}`;
 }
 
@@ -5695,6 +5766,7 @@ function processFreeDictation() {
   const text = freeDictTranscript.trim();
   if (!text) { resetFreeDictation(); return; }
   const entities = extractEntities(text);
+  lastExtractionResult = entities;
   applyExtraction(entities);
   showExtractionSummary(entities);
   freeDictProcessing = false;
@@ -5702,6 +5774,7 @@ function processFreeDictation() {
 
 function resetFreeDictation() {
   freeDictStopping = false; freeDictTranscript = ''; freeDictAutoRestarts = 0; freeDictProcessing = false;
+  lastExtractionResult = null;
   if (freeDictRecognition) { discardRecognition(freeDictRecognition); freeDictRecognition = null; }
   const banner = document.getElementById('voice-flow-banner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
@@ -5714,21 +5787,20 @@ function resetFreeDictation() {
 // ===== VOZ (Web Speech API) =====
 let voiceRecognition = null;
 let voiceFlowStep = -1;
+// Estado de la confirmación por voz ("Apellido: Vásquez ¿es correcto?") que
+// corre después de capturar cada campo, antes de pasar al siguiente.
+let voiceFlowConfirming = false;
+let voiceFlowConfirmRetries = 0;
+// Campos donde se agotaron los reintentos de confirmación por voz (2 "no"
+// seguidos) y quedaron marcados para carga manual — updateVoiceFlowBanner no
+// los limpia al avanzar de campo, para que el resaltado no desaparezca antes
+// de que el usuario llegue a completarlos a mano.
+let voiceFlowManualFields = new Set();
 
-const VOICE_FLOW = [
-  { id: 'pf-apellido',  q: 'Apellido del paciente',                            type: 'text' },
-  { id: 'pf-nombre',    q: 'Nombre del paciente',                              type: 'text' },
-  { id: 'pf-dni',       q: 'DNI del paciente',                                 type: 'dni' },
-  { id: 'pf-sexo',      q: 'Sexo: masculino, femenino, u otro',                type: 'sexo' },
-  { id: 'pf-fnac',      q: 'Fecha de nacimiento. Decí sólo día, mes y año en números — por ejemplo: quince, tres, dos mil veintidós', type: 'date' },
-  { id: 'pf-os',        q: 'Obra social',                                      type: 'text' },
-  { id: 'pf-domicilio', q: 'Domicilio',                                        type: 'text' },
-  { id: 'pf-tutor',     q: 'Nombre del tutor o responsable',                   type: 'text' },
-  { id: 'pf-tel',       q: 'Teléfono del tutor',                               type: 'text' },
-  { id: 'pf-diag',      q: 'Diagnóstico principal',                            type: 'text' },
-  { id: 'pf-ant',       q: 'Antecedentes relevantes',                          type: 'text' },
-  { id: 'pf-notas',     q: 'Notas clínicas',                                   type: 'text' },
-];
+// Derivado de PAC_FIELDS: el orden y las preguntas del dictado guiado salen
+// de la misma definición única de campos (ver arriba, junto a FP). Los
+// campos sin voiceQ (hoy sólo Email) simplemente no entran al dictado guiado.
+const VOICE_FLOW = PAC_FIELDS.filter(f => f.voiceQ).map(f => ({ id: f.id, q: f.voiceQ, type: f.type, label: f.label, longText: f.longText }));
 
 // Convierte números en palabras ("quince", "dos mil veintidós") a dígitos.
 // La Web Speech API en es-AR no siempre transcribe los números dichos en el
@@ -5756,8 +5828,14 @@ function wordsToNumber(str) {
   }
   return (total + current) || null;
 }
+// Nombres de mes compartidos entre parseVoiceDate (texto hablado → ISO) y
+// speakFieldValue (ISO → texto para el readback de confirmación), para no
+// mantener dos listas de meses por separado.
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const MESES_ES_IDX = MESES_ES.reduce((acc, name, i) => { acc[name] = i + 1; return acc; }, {});
+
 function parseVoiceDate(text) {
-  const MESES = { enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,octubre:10,noviembre:11,diciembre:12 };
+  const MESES = MESES_ES_IDX;
   // El prefijo "el" (ej. "nació el 15/3/2022") y las comas (que a veces
   // quedan de una pausa al dictar "quince, tres, dos mil veintidós") se
   // recortan acá, una sola vez, para que valgan en todos los formatos.
@@ -5858,6 +5936,20 @@ function speak(text, onEnd) {
   speechSynthesis.speak(u);
 }
 
+// Formatea un valor de campo para leerlo en voz alta en la confirmación
+// ("Fecha de nacimiento: 15 de marzo de 2022 ¿es correcto?"). Se usa sólo
+// para campos cortos — los de texto largo (step.longText) usan una frase
+// genérica en vez de leer todo el párrafo, ver voiceFlowConfirm.
+function speakFieldValue(step, value) {
+  if (step.type === 'date') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (m) return `${parseInt(m[3],10)} de ${MESES_ES[parseInt(m[2],10)-1]} de ${m[1]}`;
+    return value;
+  }
+  if (step.type === 'dni') return value.replace(/\B(?=(\d{3})+(?!\d))/g, ', ');
+  return value;
+}
+
 function updateVoiceFlowBanner() {
   const banner = document.getElementById('voice-flow-banner');
   if (!banner) return;
@@ -5865,6 +5957,25 @@ function updateVoiceFlowBanner() {
   if (!step) return;
   const pct = Math.round((voiceFlowStep / VOICE_FLOW.length) * 100);
   banner.style.display = 'block';
+  if (voiceFlowConfirming) {
+    const value = document.getElementById(step.id)?.value || '';
+    const readback = step.longText ? `${step.label} cargado` : `${step.label}: ${speakFieldValue(step, value)}`;
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">🤔</span>
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Campo ${voiceFlowStep+1} de ${VOICE_FLOW.length} — confirmar</div>
+          <div style="font-weight:600;font-size:14px;color:var(--blue2)">${escHtml(readback)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">¿Es correcto? Decilo o tocá una opción</div>
+        </div>
+        <button onclick="stopGuidedVoice()" style="background:none;border:none;color:var(--red);font-size:22px;cursor:pointer;padding:4px;line-height:1">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="voiceFlowConfirmAccept()" style="flex:1;background:var(--green);border:none;border-radius:var(--radius-sm);padding:8px;font-size:12px;font-weight:700;color:#052e1c;cursor:pointer;font-family:'DM Sans',sans-serif">✔ Confirmar</button>
+        <button onclick="voiceFlowConfirmReject()" style="flex:1;background:rgba(251,191,36,.12);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:8px;font-size:12px;font-weight:700;color:var(--amber);cursor:pointer;font-family:'DM Sans',sans-serif">🔁 Corregir</button>
+      </div>`;
+    return;
+  }
   banner.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:22px;animation:pulse 1s infinite">🎤</span>
@@ -5878,7 +5989,7 @@ function updateVoiceFlowBanner() {
     <div style="height:3px;background:var(--border);border-radius:2px;margin-top:10px">
       <div style="height:100%;width:${pct}%;background:var(--blue2);border-radius:2px;transition:width 0.4s"></div>
     </div>`;
-  VOICE_FLOW.forEach(s => { const el=document.getElementById(s.id); if(el) el.style.outline=''; });
+  VOICE_FLOW.forEach(s => { if (voiceFlowManualFields.has(s.id)) return; const el=document.getElementById(s.id); if(el) el.style.outline=''; });
   const el = document.getElementById(step.id);
   if (el) { el.style.outline='2px solid var(--blue2)'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
 }
@@ -5896,81 +6007,182 @@ function discardRecognition(rec) {
   try { rec.stop(); } catch(_) {}
 }
 
-function voiceFlowCapture() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR || voiceFlowStep < 0) return;
-  const step = VOICE_FLOW[voiceFlowStep];
+// Interpreta la respuesta hablada según el tipo de campo — sin acceso a DOM,
+// así lo puede usar tanto el dictado guiado (captureTypedField) como el
+// reintento dirigido de un solo campo (retryVoiceField). Devuelve
+// {skip:true} si se dijo "omitir", {ok:true,value} si se entendió, o
+// {ok:false,raw:text} si se detectó voz pero no se pudo interpretar.
+function parseVoiceValue(type, text) {
+  if (/omitir|saltar/i.test(text)) return { skip: true };
+  if (type === 'date') {
+    const d = parseVoiceDate(text);
+    return d ? { ok: true, value: d } : { ok: false, raw: text };
+  }
+  if (type === 'dni') {
+    let digits = (text.match(/\d/g) || []).join('');
+    if (digits.length < 6) {
+      // A veces el DNI se dicta dígito por dígito en palabras ("uno dos tres...")
+      const tl = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+      const wordDigits = tl.split(/\s+/).map(w => (w in NUM_WORDS && NUM_WORDS[w] <= 9) ? String(NUM_WORDS[w]) : '').join('');
+      if (wordDigits.length >= 6) digits = wordDigits;
+    }
+    return digits.length >= 6 ? { ok: true, value: digits } : { ok: false, raw: text };
+  }
+  if (type === 'sexo') {
+    const tl = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    let sexo = '';
+    if (/femenino|nena|ni[ñn]a|mujer/.test(tl)) sexo = 'Femenino';
+    else if (/masculino|nene|ni[ñn]o|var[oó]n/.test(tl)) sexo = 'Masculino';
+    else if (/otro/.test(tl)) sexo = 'Otro';
+    return sexo ? { ok: true, value: sexo } : { ok: false, raw: text };
+  }
+  return { ok: true, value: text };
+}
 
+// Captura una sola respuesta de voz para un campo {id,type} y la parsea según
+// su tipo — dueña del ciclo de vida de SpeechRecognition (no toca el DOM,
+// eso lo decide onDone). La usan tanto el dictado guiado (voiceFlowCapture)
+// como el reintento dirigido de un solo campo (retryVoiceField), por eso
+// funciona con cualquier entrada de PAC_FIELDS, no sólo con VOICE_FLOW.
+function captureTypedField(step, onDone) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { onDone({ skip: true }); return; }
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   voiceRecognition = new SR();
   voiceRecognition.lang = 'es-AR';
   voiceRecognition.continuous = false;
   voiceRecognition.interimResults = false;
   let advanced = false;
+  const finish = result => {
+    if (advanced) return;
+    advanced = true;
+    clearTimeout(safetyTimer);
+    if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+    onDone(result);
+  };
   // Red de seguridad: si el navegador nunca dispara resultado/error para este
   // campo (se cuelga la escucha), igual avanzamos en vez de trabar el flujo.
   const safetyTimer = setTimeout(() => {
-    if (advanced) return;
-    advanced = true;
-    if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
     showToast('No se escuchó nada, continuando...');
-    voiceFlowNext();
+    finish({ skip: true });
   }, 12000);
-  voiceRecognition.onresult = e => {
-    if (advanced) return;
-    advanced = true;
-    clearTimeout(safetyTimer);
-    const text = e.results[0][0].transcript.trim();
-    if (/omitir|saltar/i.test(text)) { voiceFlowNext(); return; }
-    const el = document.getElementById(step.id);
-    if (el) {
-      if (step.type === 'date') {
-        const d = parseVoiceDate(text);
-        if (d) { el.value = d; el.dispatchEvent(new Event('input')); }
-        else { showToast(`No entendí la fecha ("${text}") — completala manualmente o con el calendario`); }
-      } else if (step.type === 'dni') {
-        let digits = (text.match(/\d/g) || []).join('');
-        if (digits.length < 6) {
-          // A veces el DNI se dicta dígito por dígito en palabras ("uno dos tres...")
-          const tl = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const wordDigits = tl.split(/\s+/).map(w => (w in NUM_WORDS && NUM_WORDS[w] <= 9) ? String(NUM_WORDS[w]) : '').join('');
-          if (wordDigits.length >= 6) digits = wordDigits;
-        }
-        if (digits.length >= 6) { el.value = digits; el.dispatchEvent(new Event('input')); }
-        else { showToast('No entendí el DNI — completalo manualmente'); }
-      } else if (step.type === 'sexo') {
-        const tl = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-        let sexo = '';
-        if (/femenino|nena|ni[ñn]a|mujer/.test(tl)) sexo = 'Femenino';
-        else if (/masculino|nene|ni[ñn]o|var[oó]n/.test(tl)) sexo = 'Masculino';
-        else if (/otro/.test(tl)) sexo = 'Otro';
-        if (sexo) { el.value = sexo; el.dispatchEvent(new Event('input')); }
-        else { showToast('No entendí el sexo — completalo manualmente'); }
-      } else {
-        el.value = text;
-        el.dispatchEvent(new Event('input'));
-      }
-    }
-    voiceFlowNext();
-  };
+  voiceRecognition.onresult = e => finish(parseVoiceValue(step.type, e.results[0][0].transcript.trim()));
   voiceRecognition.onerror = e => {
-    if (advanced) return;
-    advanced = true;
-    clearTimeout(safetyTimer);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       // Sin permiso de micrófono no tiene sentido seguir insistiendo campo
       // por campo (antes esto se trataba igual que "silencio" y el flujo
       // seguía reintentando —y volviendo a pedir permiso— en cada uno de
-      // los 11 campos). Cortamos una sola vez con un mensaje claro.
+      // los 11 campos). Se avisa una sola vez con un mensaje claro.
       showToast('Permiso de micrófono denegado — habilitalo en la configuración del sitio e intentá de nuevo');
-      stopGuidedVoice();
+      finish({ skip: true, denied: true });
       return;
     }
     showToast('No se escuchó nada, continuando...');
-    setTimeout(voiceFlowNext, 800);
+    setTimeout(() => finish({ skip: true }), 800);
   };
   voiceRecognition.onend = () => { voiceRecognition = null; };
   voiceRecognition.start();
+}
+
+function voiceFlowCapture() {
+  if (voiceFlowStep < 0) return;
+  const step = VOICE_FLOW[voiceFlowStep];
+  captureTypedField(step, result => {
+    if (result.denied) { stopGuidedVoice(); return; }
+    if (result.skip) { voiceFlowNext(); return; }
+    if (result.ok) {
+      setFieldValue(step.id, result.value);
+      voiceFlowConfirm(step);
+    } else {
+      const msgs = {
+        date: `No entendí la fecha ("${result.raw}") — completala manualmente o con el calendario`,
+        dni:  'No entendí el DNI — completalo manualmente',
+        sexo: 'No entendí el sexo — completalo manualmente',
+      };
+      showToast(msgs[step.type] || 'No entendí — completalo manualmente');
+      voiceFlowNext();
+    }
+  });
+}
+
+// Escucha una respuesta de tipo sí/no para la confirmación por voz. Si no se
+// entiende como sí ni como no, repregunta una sola vez ("¿sí o no?") antes de
+// tomarla como confirmada — así una respuesta ambigua no se malinterpreta
+// como rechazo, pero tampoco se acepta a la primera sin dar chance a aclarar.
+function voiceFlowListenYesNo(onAccept, onReject) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const REJECT_RE = /\bno\b|incorrecto|corregi|corrij|equivocad|de nuevo|repetir/i;
+  const ACCEPT_RE = /\bs[ií]\b|correct|dale|exacto|\bok\b|listo/i;
+  const attempt = isRetry => {
+    if (!SR) { onAccept(); return; }
+    if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+    voiceRecognition = new SR();
+    voiceRecognition.lang = 'es-AR';
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    let done = false;
+    const finish = text => {
+      if (done) return;
+      done = true;
+      clearTimeout(safetyTimer);
+      if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+      if (REJECT_RE.test(text)) { onReject(); return; }
+      if (ACCEPT_RE.test(text) || isRetry) { onAccept(); return; }
+      speak('¿Sí o no?', () => attempt(true));
+    };
+    const safetyTimer = setTimeout(() => finish(''), 8000);
+    voiceRecognition.onresult = e => finish(e.results[0][0].transcript.trim());
+    voiceRecognition.onerror  = () => finish('');
+    voiceRecognition.onend    = () => { voiceRecognition = null; };
+    voiceRecognition.start();
+  };
+  attempt(false);
+}
+
+// Lee en voz alta lo entendido para el campo actual y espera confirmación
+// antes de pasar al siguiente — ver voiceFlowConfirmAccept/Reject, que además
+// sirven de handler para los botones táctiles del banner (respaldo si el
+// reconocimiento de la confirmación en sí también falla).
+function voiceFlowConfirm(step) {
+  voiceFlowConfirming = true;
+  updateVoiceFlowBanner();
+  const value = document.getElementById(step.id)?.value || '';
+  const phrase = step.longText
+    ? `${step.label} cargado. ¿Es correcto?`
+    : `${step.label}: ${speakFieldValue(step, value)}. ¿Es correcto?`;
+  speak(phrase, () => voiceFlowListenYesNo(voiceFlowConfirmAccept, voiceFlowConfirmReject));
+}
+
+function voiceFlowConfirmAccept() {
+  speechSynthesis.cancel();
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  voiceFlowConfirming = false;
+  voiceFlowConfirmRetries = 0;
+  voiceFlowNext();
+}
+
+function voiceFlowConfirmReject() {
+  speechSynthesis.cancel();
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  const step = VOICE_FLOW[voiceFlowStep];
+  voiceFlowConfirmRetries++;
+  const el = document.getElementById(step.id);
+  // Segundo "no" seguido para el mismo campo: dejamos de insistir por voz,
+  // resaltamos el campo para carga manual y seguimos con el siguiente en vez
+  // de trabar el flujo guiado en un loop de reconocimiento fallido.
+  if (voiceFlowConfirmRetries >= 2) {
+    voiceFlowConfirming = false;
+    voiceFlowConfirmRetries = 0;
+    voiceFlowManualFields.add(step.id);
+    if (el) el.style.outline = '2px solid var(--amber)';
+    showToast(`No se logró captar "${step.label}" por voz — completalo a mano`);
+    voiceFlowNext();
+    return;
+  }
+  voiceFlowConfirming = false;
+  if (el) { el.value = ''; el.dispatchEvent(new Event('input')); }
+  updateVoiceFlowBanner();
+  speak('Decilo de nuevo. ' + step.q, voiceFlowCapture);
 }
 
 function voiceFlowNext() {
@@ -5989,6 +6201,9 @@ function startGuidedVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
   voiceFlowStep = 0;
+  voiceFlowConfirming = false;
+  voiceFlowConfirmRetries = 0;
+  voiceFlowManualFields = new Set();
   const btn = document.getElementById('btn-guided-voice');
   if (btn) btn.style.display = 'none';
   updateVoiceFlowBanner();
@@ -5998,6 +6213,9 @@ function startGuidedVoice() {
 
 function stopGuidedVoice() {
   voiceFlowStep = -1;
+  voiceFlowConfirming = false;
+  voiceFlowConfirmRetries = 0;
+  voiceFlowManualFields = new Set();
   speechSynthesis.cancel();
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
   const banner = document.getElementById('voice-flow-banner');
