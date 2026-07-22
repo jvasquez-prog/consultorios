@@ -383,7 +383,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
           <div class="profile-avatar" id="profile-avatar">?</div>
         </button>
         <button class="logout-btn" onclick="lockApp()" title="Cerrar sesión">🔒</button>
-        <div class="header-logo-icon" onclick="openInfoModal()" title="Información de la app">🩺</div>
+        <div class="header-logo-icon" onclick="openInfoModal()" title="Información de la app" style="position:relative">🩺<span class="novedades-dot" style="display:none;position:absolute;top:1px;right:1px;width:9px;height:9px;border-radius:50%;background:var(--red);border:1.5px solid var(--bg)"></span></div>
       </div>
     </div>
     <div class="subtitle">Consultorios Pediátricos Particulares</div>
@@ -701,7 +701,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     </div>
     <div class="form-group">
       <label class="form-label">Antecedentes</label>
-      <textarea class="form-input" id="pf-ant" rows="2" placeholder="Antecedentes relevantes..."></textarea>
+      <div style="display:flex;gap:6px">
+        <textarea class="form-input" id="pf-ant" rows="2" placeholder="Antecedentes relevantes..." style="flex:1"></textarea>
+        <button type="button" onclick="startVoice('pf-ant')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0;align-self:flex-start;height:40px">🎤</button>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Notas Clínicas</label>
@@ -798,12 +801,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
       </div>
       <span style="margin-left:auto;color:var(--text3);font-size:18px">›</span>
     </button>
-    <button onclick="openInfoSection('mejoras')" style="display:flex;align-items:center;gap:14px;width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:16px;cursor:pointer;margin-bottom:20px;text-align:left">
+    <button onclick="openInfoSection('mejoras')" style="display:flex;align-items:center;gap:14px;width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:16px;cursor:pointer;margin-bottom:10px;text-align:left">
       <span style="font-size:26px">🚀</span>
       <div>
         <div style="font-size:15px;font-weight:600;color:var(--text)">¿Cómo se puede mejorar?</div>
         <div style="font-size:12px;color:var(--text3);margin-top:2px">Oportunidades e integraciones</div>
       </div>
+      <span style="margin-left:auto;color:var(--text3);font-size:18px">›</span>
+    </button>
+    <button onclick="openInfoSection('novedades')" style="display:flex;align-items:center;gap:14px;width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:16px;cursor:pointer;margin-bottom:20px;text-align:left;position:relative">
+      <span style="font-size:26px">📣</span>
+      <div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">Novedades</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Avisos para el equipo</div>
+      </div>
+      <span class="novedades-dot" style="display:none;position:absolute;top:12px;left:36px;width:9px;height:9px;border-radius:50%;background:var(--red)"></span>
       <span style="margin-left:auto;color:var(--text3);font-size:18px">›</span>
     </button>
     <button class="btn-cancel" onclick="closeModal('modal-info')">Cerrar</button>
@@ -2297,7 +2309,6 @@ async function openPacDetail(idx) {
   const edadStr  = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
   const sexo     = rec.fields[FP.sexo]?.name || rec.fields[FP.sexo] || '';
   const dni      = rec.fields[FP.dni] ? `DNI ${Math.round(rec.fields[FP.dni]).toLocaleString()}` : '';
-  const estado   = rec.fields[FP.estado]?.name || rec.fields[FP.estado] || '';
   const os       = rec.fields[FP.obraSoc] || '';
   const dom      = rec.fields[FP.domicilio] || '';
   const tutor    = rec.fields[FP.tutor] || '';
@@ -2317,7 +2328,6 @@ async function openPacDetail(idx) {
     ${row('Edad', edadStr)}
     ${row('Sexo', sexo)}
     ${row('DNI', dni)}
-    ${row('Estado', estado)}
     ${row('Obra Social', os)}
     ${row('Domicilio', dom)}
     <div style="height:1px;background:var(--border);margin:10px 0"></div>
@@ -3395,6 +3405,8 @@ const INFO_CONTENT = {
 <p><strong>Si olvidás el PIN:</strong> tocá "Olvidé mi PIN" en la pantalla de acceso. Se borra el PIN y la app queda lista para crear uno nuevo. Los datos de los pacientes no se pierden.</p>
 <p><strong>Tu perfil:</strong> tocando tu avatar (arriba a la derecha) podés cargar tu nombre y elegir si sos <strong>Médico</strong> o <strong>Administrativo</strong>. El rol Médico tiene acceso a todo; Administrativo es para quien ayuda con la carga de datos.</p>
 <p><strong>Cerrar sesión:</strong> tocá el candado 🔒 en la esquina superior derecha.</p>
+<p><strong>Verificación en dos pasos (2FA):</strong> desde "Mi Perfil" podés activar un código adicional (con una app autenticadora en tu celular) para sumar seguridad al PIN. Es opcional.</p>
+<p><strong>📣 Novedades:</strong> acá mismo, en este menú, hay un ítem "Novedades" con avisos para el equipo. Si hay algo nuevo sin leer, aparece un punto rojo hasta que lo abrís.</p>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">🏠 Home</h3>
 <p>La pantalla principal: cuántos pacientes tenés cargados, cuántos están activos y cuántos ya recibieron el alta. Accesos directos para ir a Pacientes, Vacunas, Controles o cargar un paciente nuevo.</p>
@@ -3409,9 +3421,10 @@ const INFO_CONTENT = {
 </ul>
 <p><strong>Carga por voz:</strong> en vez de tipear, podés tocar el micrófono y decir los datos en voz alta. Hay dos formas:</p>
 <ul style="padding-left:18px;margin:6px 0">
-  <li><strong>🎤 Decir los datos, uno seguido del otro:</strong> decís todos los datos seguidos ("Javier Vasquez, doce años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...") y la app detecta cada dato y lo carga en el campo que corresponde. Al terminar, mostrás en verde lo que se cargó bien; lo que falte podés completarlo a mano o volver a dictarlo. Se puede terminar el dictado tocando "■ Listo" o directamente diciendo la palabra <strong>"listo"</strong>.</li>
-  <li><strong>Dictado guiado:</strong> la app te va preguntando campo por campo (nombre, DNI, sexo, fecha de nacimiento, etc.) y vos respondés de a uno. Es más lento pero más ordenado.</li>
+  <li><strong>🎤 Decir los datos, uno seguido del otro:</strong> decís todos los datos seguidos ("Javier Vasquez, doce años, DNI 12345678, OSDE, mamá Ana Gómez, teléfono...") y la app detecta cada dato y lo carga en el campo que corresponde. Al terminar, mostrás en verde lo que se cargó bien — cada campo detectado tiene un ✕ para borrarlo y un 🎤 para redictar sólo ese dato, sin repetir todo de nuevo. Si algo se escuchó pero no se pudo interpretar (por ejemplo, un email mal deletreado), aparece un aviso amarillo tocable para corregirlo puntual. Se termina el dictado tocando "■ Listo" o diciendo la palabra <strong>"listo"</strong>.</li>
+  <li><strong>Dictado guiado:</strong> la app pregunta campo por campo y vos respondés de a uno, viendo en pantalla lo que se va reconociendo mientras hablás. Después de cada respuesta, la app repite lo que entendió — si está bien no hace falta decir nada, sigue sola; si hay que corregir, hablás de nuevo o tocás "🔁 Corregir". Con <strong>"⚙ Elegir campos"</strong> (al lado del botón de dictado guiado) podés elegir qué campos querés que te pregunte (por ejemplo, sólo DNI, fecha de nacimiento y sexo) en vez de los 12 completos — la elección queda recordada para la próxima vez.</li>
 </ul>
+<p>Tanto en el formulario como en el dictado guiado, si tocás el 🎤 de un campo que ya tiene algo cargado, <strong>lo reemplaza</strong> por lo nuevo que digas (no se agrega al final).</p>
 
 <h3 style="color:var(--blue2);margin:18px 0 6px">💉 Vacunas</h3>
 <p>Elegís un paciente de la lista y la app calcula sola, según su fecha de nacimiento, qué vacunas le corresponden en 2026, con la fecha estipulada y cuánto tiempo le queda (o si ya está atrasada). Más abajo también está la lista general de vacunas pendientes de todos los pacientes.</p>
@@ -3514,6 +3527,7 @@ function openInfoModal() {
 }
 
 function openInfoSection(key) {
+  if (key === 'novedades') { openNovedadesSection(); return; }
   const sec = INFO_CONTENT[key];
   if (!sec) return;
   closeModal('modal-info');
@@ -3525,6 +3539,50 @@ function openInfoSection(key) {
 
 function closeInfoSection() {
   document.getElementById('info-content-overlay').style.display = 'none';
+}
+
+// ===== NOVEDADES (aviso editable del equipo, con punto rojo de no leído) =====
+// Vive sólo en este dispositivo (localStorage), igual que el perfil y los
+// permisos por rol — no hay backend que la sincronice entre dispositivos.
+function getNovedades() {
+  try { return JSON.parse(localStorage.getItem('synapsis_novedades') || 'null') || { text: '', updatedAt: 0 }; }
+  catch(e) { return { text: '', updatedAt: 0 }; }
+}
+function hasUnreadNovedades() {
+  const n = getNovedades();
+  if (!n.text) return false;
+  const seen = parseInt(localStorage.getItem('synapsis_novedades_seen') || '0');
+  return n.updatedAt > seen;
+}
+function updateNovedadesDot() {
+  const unread = hasUnreadNovedades();
+  document.querySelectorAll('.novedades-dot').forEach(d => { d.style.display = unread ? 'block' : 'none'; });
+}
+function markNovedadesSeen() {
+  localStorage.setItem('synapsis_novedades_seen', String(Date.now()));
+  updateNovedadesDot();
+}
+function saveNovedadesText() {
+  const ta = document.getElementById('novedades-textarea');
+  if (!ta) return;
+  const text = ta.value.trim();
+  localStorage.setItem('synapsis_novedades', JSON.stringify({ text, updatedAt: Date.now() }));
+  showToast('✓ Novedades guardadas');
+  markNovedadesSeen();
+  openNovedadesSection();
+}
+function openNovedadesSection() {
+  closeModal('modal-info');
+  const n = getNovedades();
+  document.getElementById('info-content-title').textContent = 'Novedades';
+  document.getElementById('info-content-body').innerHTML = `
+    <p style="color:var(--text3);font-size:13px;margin-bottom:14px">Avisos para el equipo (queda guardado en este dispositivo).</p>
+    <textarea id="novedades-textarea" rows="8" class="form-input" style="width:100%;font-family:'DM Sans',sans-serif">${escHtml(n.text)}</textarea>
+    <button onclick="saveNovedadesText()" style="width:100%;margin-top:10px;background:var(--blue2);border:none;border-radius:var(--radius-sm);padding:10px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif">Guardar</button>
+    ${n.updatedAt ? `<div style="font-size:11px;color:var(--text3);margin-top:8px;text-align:center">Última actualización: ${new Date(n.updatedAt).toLocaleString('es-AR')}</div>` : ''}`;
+  document.getElementById('info-content-overlay').style.display = 'block';
+  document.getElementById('info-content-overlay').scrollTop = 0;
+  markNovedadesSeen();
 }
 
 // ===== HOME =====
@@ -6268,6 +6326,27 @@ function voiceFlowNext() {
   speak(VOICE_FLOW[voiceFlowStep].q, voiceFlowCapture);
 }
 
+// La primera vez que se usa el reconocimiento de voz en la sesión, el
+// navegador suele tardar un instante extra en inicializar el micrófono
+// (chequeo de permisos, arranque del pipeline de audio) — ese instante se
+// comía las primeras sílabas de la respuesta al primer campo del guiado
+// (Apellido, siempre el primero en PAC_FIELDS/VOICE_FLOW). Se arranca y
+// descarta una instancia "de calentamiento" apenas se abre el guiado,
+// mientras se reproduce el audio de la introducción, para que el pipeline
+// ya esté listo cuando el usuario responda la primera pregunta.
+function warmUpSpeechRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  try {
+    const warm = new SR();
+    warm.lang = 'es-AR';
+    warm.onerror = () => {};
+    warm.onend = () => {};
+    warm.start();
+    setTimeout(() => { try { warm.stop(); } catch(e) {} }, 400);
+  } catch(e) {}
+}
+
 function startGuidedVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
@@ -6282,6 +6361,7 @@ function startGuidedVoice() {
   if (btn) btn.style.display = 'none';
   if (picker) picker.style.display = 'none';
   updateVoiceFlowBanner();
+  warmUpSpeechRecognition();
   const intro = editingId ? 'Vamos a editar los datos del paciente. ' : 'Vamos a cargar un nuevo paciente. ';
   speak(intro + VOICE_FLOW[0].q, voiceFlowCapture);
 }
@@ -6375,7 +6455,7 @@ function startVoice(targetId) {
   showToast('🎤 Escuchando...');
   voiceRecognition.onresult = e => {
     const text = e.results[0][0].transcript;
-    el.value = (el.value ? el.value + ' ' : '') + text;
+    el.value = text;
     el.dispatchEvent(new Event('input'));
     showToast('✓ Voz reconocida');
   };
@@ -6385,6 +6465,7 @@ function startVoice(targetId) {
 }
 
 pinInit();
+updateNovedadesDot();
 </script>
 </body>
 </html>
