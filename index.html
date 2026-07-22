@@ -6031,6 +6031,7 @@ function updateVoiceFlowBanner() {
       <div style="flex:1">
         <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Campo ${voiceFlowStep+1} de ${VOICE_FLOW.length}</div>
         <div style="font-weight:600;font-size:14px;color:var(--blue2)">${step.q}</div>
+        <div id="guided-live-transcript" style="font-size:12px;color:var(--text2);margin-top:4px;min-height:16px;font-style:italic"></div>
         <div style="font-size:11px;color:var(--text3);margin-top:3px">Decí <b>"omitir"</b> para saltar este campo</div>
       </div>
       <button onclick="stopGuidedVoice()" style="background:none;border:none;color:var(--red);font-size:22px;cursor:pointer;padding:4px;line-height:1">✕</button>
@@ -6100,7 +6101,11 @@ function captureTypedField(step, onDone) {
   voiceRecognition = new SR();
   voiceRecognition.lang = 'es-AR';
   voiceRecognition.continuous = false;
-  voiceRecognition.interimResults = false;
+  // Con interimResults activado se puede mostrar en vivo lo que se va
+  // escuchando, en vez de una espera "muda" hasta el resultado final —
+  // antes, si algo fallaba, el usuario no se enteraba de que el micrófono
+  // no estaba captando nada hasta que se cortaba la escucha.
+  voiceRecognition.interimResults = true;
   let advanced = false;
   const finish = result => {
     if (advanced) return;
@@ -6115,7 +6120,23 @@ function captureTypedField(step, onDone) {
     showToast('No se escuchó nada, continuando...');
     finish({ skip: true });
   }, 12000);
-  voiceRecognition.onresult = e => finish(parseVoiceValue(step.type, e.results[0][0].transcript.trim()));
+  voiceRecognition.onresult = e => {
+    const last = e.results[e.results.length - 1];
+    const text = last?.[0]?.transcript || '';
+    // Campos de texto libre: se escribe directo en el campo, igual que en
+    // "hablar libremente". Fecha/DNI/sexo no pueden mostrar texto a medio
+    // dictar (un <input type="date"> o un <select> descartan cualquier valor
+    // que no sea válido) — para esos se muestra en la línea de transcripción
+    // del banner en su lugar.
+    if (step.type === 'text') {
+      const el = document.getElementById(step.id);
+      if (el) el.value = text;
+    } else {
+      const live = document.getElementById('guided-live-transcript');
+      if (live) live.textContent = text;
+    }
+    if (last?.isFinal) finish(parseVoiceValue(step.type, text.trim()));
+  };
   voiceRecognition.onerror = e => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       // Sin permiso de micrófono no tiene sentido seguir insistiendo campo
