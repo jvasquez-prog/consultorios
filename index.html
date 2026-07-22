@@ -6167,7 +6167,10 @@ function parseVoiceValue(type, text) {
 // usa escucha continua — mismo patrón ya probado en "hablar libremente" — y
 // un temporizador propio que se reinicia con cada resultado nuevo.
 const LONG_TEXT_SILENCE_MS = 3000;
-const LONG_TEXT_MAX_AUTO_RESTARTS = 6;
+// Red de seguridad absoluta para que una respuesta larga nunca quede
+// escuchando para siempre — no debería alcanzarse en un uso normal, porque
+// el criterio real para terminar es el silencio, no este tope.
+const LONG_TEXT_MAX_TOTAL_MS = 3 * 60 * 1000;
 function captureLongTextField(step, onDone) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { onDone({ skip: true }); return; }
@@ -6175,15 +6178,17 @@ function captureLongTextField(step, onDone) {
   const el = document.getElementById(step.id);
   let transcript = '';
   let advanced = false;
-  let autoRestarts = 0;
+  let rapidEndCount = 0;
   // Margen inicial más largo para empezar a hablar (mismo criterio que la
   // red de seguridad de 12s del resto de los campos) — recién después de la
   // primera palabra se pasa al margen de silencio corto de 3s entre pausas.
   let silenceTimer = setTimeout(finish, 12000);
+  const hardCap = setTimeout(finish, LONG_TEXT_MAX_TOTAL_MS);
   function finish() {
     if (advanced) return;
     advanced = true;
     clearTimeout(silenceTimer);
+    clearTimeout(hardCap);
     if (voiceRecognition) { try { voiceRecognition.stop(); } catch(e) {} }
   }
   function resetSilenceTimer() {
@@ -6191,12 +6196,12 @@ function captureLongTextField(step, onDone) {
     silenceTimer = setTimeout(finish, LONG_TEXT_SILENCE_MS);
   }
   function launch() {
+    const startedAt = Date.now();
     voiceRecognition = new SR();
     voiceRecognition.lang = 'es-AR';
     voiceRecognition.continuous = true;
     voiceRecognition.interimResults = true;
     voiceRecognition.onresult = e => {
-      autoRestarts = 0;
       resetSilenceTimer();
       let fin = '', tmp = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -6213,18 +6218,34 @@ function captureLongTextField(step, onDone) {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         advanced = true;
         clearTimeout(silenceTimer);
+        clearTimeout(hardCap);
         showToast('Permiso de micrófono denegado — habilitalo en la configuración del sitio e intentá de nuevo');
         if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
         onDone({ skip: true, denied: true });
       }
-      // no-speech/network/aborted: se deja que onend decida si reintentar,
-      // igual que en "hablar libremente" — no se pierde lo ya dictado.
+      // no-speech/network/aborted: se deja que onend decida si reintentar
+      // — no se pierde lo ya dictado.
     };
     voiceRecognition.onend = () => {
       voiceRecognition = null;
       if (advanced) { onDone(parseVoiceValue(step.type, transcript.trim())); return; }
-      if (autoRestarts < LONG_TEXT_MAX_AUTO_RESTARTS) { autoRestarts++; launch(); }
-      else { advanced = true; clearTimeout(silenceTimer); onDone(parseVoiceValue(step.type, transcript.trim())); }
+      // El navegador corta la escucha continua por su cuenta en cada pausa
+      // (pasa seguido, sobre todo en celulares) — mientras no se haya
+      // cumplido el margen de silencio real, se reinicia SIN límite de
+      // intentos: el único criterio para terminar es el temporizador de
+      // silencio (arriba), no la cantidad de reinicios. Antes un tope bajo
+      // de reinicios cortaba respuestas largas con varias pausas para
+      // pensar mucho antes de los 3 segundos reales de silencio.
+      if (Date.now() - startedAt < 200) {
+        // Termina casi instantáneamente y de forma repetida: no es un corte
+        // normal por pausa, sino una falla real (sin micrófono, permiso
+        // revocado a mitad de camino) — evita un loop de reinicio infinito.
+        rapidEndCount++;
+        if (rapidEndCount > 5) { finish(); onDone(parseVoiceValue(step.type, transcript.trim())); return; }
+      } else {
+        rapidEndCount = 0;
+      }
+      launch();
     };
     voiceRecognition.start();
   }
