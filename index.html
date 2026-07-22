@@ -6002,16 +6002,16 @@ function updateVoiceFlowBanner() {
     const readback = step.longText ? `${step.label} cargado` : `${step.label}: ${speakFieldValue(step, value)}`;
     banner.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:22px">🤔</span>
+        <span style="font-size:22px;animation:pulse .6s infinite">🤔</span>
         <div style="flex:1">
-          <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Campo ${voiceFlowStep+1} de ${VOICE_FLOW.length} — confirmar</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Campo ${voiceFlowStep+1} de ${VOICE_FLOW.length} — confirmando...</div>
           <div style="font-weight:600;font-size:14px;color:var(--blue2)">${escHtml(readback)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">¿Es correcto? Decilo o tocá una opción</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">Si está bien, no digas nada — sigue solo. Para corregir, hablá ahora o tocá 🔁</div>
         </div>
         <button onclick="stopGuidedVoice()" style="background:none;border:none;color:var(--red);font-size:22px;cursor:pointer;padding:4px;line-height:1">✕</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:10px">
-        <button onclick="voiceFlowConfirmAccept()" style="flex:1;background:var(--green);border:none;border-radius:var(--radius-sm);padding:8px;font-size:12px;font-weight:700;color:#052e1c;cursor:pointer;font-family:'DM Sans',sans-serif">✔ Confirmar</button>
+        <button onclick="voiceFlowConfirmAccept()" style="flex:1;background:var(--green);border:none;border-radius:var(--radius-sm);padding:8px;font-size:12px;font-weight:700;color:#052e1c;cursor:pointer;font-family:'DM Sans',sans-serif">✔ Confirmar ya</button>
         <button onclick="voiceFlowConfirmReject()" style="flex:1;background:rgba(251,191,36,.12);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:8px;font-size:12px;font-weight:700;color:var(--amber);cursor:pointer;font-family:'DM Sans',sans-serif">🔁 Corregir</button>
       </div>`;
     return;
@@ -6145,52 +6145,52 @@ function voiceFlowCapture() {
   });
 }
 
-// Escucha una respuesta de tipo sí/no para la confirmación por voz. Si no se
-// entiende como sí ni como no, repregunta una sola vez ("¿sí o no?") antes de
-// tomarla como confirmada — así una respuesta ambigua no se malinterpreta
-// como rechazo, pero tampoco se acepta a la primera sin dar chance a aclarar.
-function voiceFlowListenYesNo(onAccept, onReject) {
+// Ventana breve de "confirmación pasiva" tras leer el valor entendido: si no
+// se escucha nada, se confirma sola (no hace falta decir "sí"); si se
+// escucha cualquier cosa, se toma como que el usuario quiere corregir — no
+// hace falta reconocer QUÉ dijo, alcanza con detectar que habló. Esto evita
+// depender de reconocer bien una palabra tan corta como "sí"/"no" (la causa
+// real de que la confirmación activa anterior pareciera "no escuchar").
+const PASSIVE_CONFIRM_WINDOW_MS = 2500;
+function voiceFlowPassiveListen() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const REJECT_RE = /\bno\b|incorrecto|corregi|corrij|equivocad|de nuevo|repetir/i;
-  const ACCEPT_RE = /\bs[ií]\b|correct|dale|exacto|\bok\b|listo/i;
-  const attempt = isRetry => {
-    if (!SR) { onAccept(); return; }
+  if (!SR) { voiceFlowConfirmAccept(); return; }
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  voiceRecognition = new SR();
+  voiceRecognition.lang = 'es-AR';
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = true;
+  let done = false;
+  const finish = heardSomething => {
+    if (done) return;
+    done = true;
+    clearTimeout(windowTimer);
     if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
-    voiceRecognition = new SR();
-    voiceRecognition.lang = 'es-AR';
-    voiceRecognition.continuous = false;
-    voiceRecognition.interimResults = false;
-    let done = false;
-    const finish = text => {
-      if (done) return;
-      done = true;
-      clearTimeout(safetyTimer);
-      if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
-      if (REJECT_RE.test(text)) { onReject(); return; }
-      if (ACCEPT_RE.test(text) || isRetry) { onAccept(); return; }
-      speak('¿Sí o no?', () => attempt(true));
-    };
-    const safetyTimer = setTimeout(() => finish(''), 8000);
-    voiceRecognition.onresult = e => finish(e.results[0][0].transcript.trim());
-    voiceRecognition.onerror  = () => finish('');
-    voiceRecognition.onend    = () => { voiceRecognition = null; };
-    voiceRecognition.start();
+    if (heardSomething) voiceFlowConfirmReject(); else voiceFlowConfirmAccept();
   };
-  attempt(false);
+  const windowTimer = setTimeout(() => finish(false), PASSIVE_CONFIRM_WINDOW_MS);
+  voiceRecognition.onresult = e => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if ((e.results[i][0]?.transcript || '').trim()) { finish(true); return; }
+    }
+  };
+  voiceRecognition.onerror = () => finish(false);
+  voiceRecognition.onend   = () => { voiceRecognition = null; };
+  voiceRecognition.start();
 }
 
-// Lee en voz alta lo entendido para el campo actual y espera confirmación
-// antes de pasar al siguiente — ver voiceFlowConfirmAccept/Reject, que además
-// sirven de handler para los botones táctiles del banner (respaldo si el
-// reconocimiento de la confirmación en sí también falla).
+// Lee en voz alta lo entendido para el campo actual (afirmación, no
+// pregunta) y abre la ventana de confirmación pasiva — ver
+// voiceFlowConfirmAccept/Reject, que además sirven de handler para los
+// botones táctiles del banner (respaldo si la escucha de la ventana falla).
 function voiceFlowConfirm(step) {
   voiceFlowConfirming = true;
   updateVoiceFlowBanner();
   const value = document.getElementById(step.id)?.value || '';
   const phrase = step.longText
-    ? `${step.label} cargado. ¿Es correcto?`
-    : `${step.label}: ${speakFieldValue(step, value)}. ¿Es correcto?`;
-  speak(phrase, () => voiceFlowListenYesNo(voiceFlowConfirmAccept, voiceFlowConfirmReject));
+    ? `${step.label} cargado.`
+    : `${step.label}: ${speakFieldValue(step, value)}.`;
+  speak(phrase, voiceFlowPassiveListen);
 }
 
 function voiceFlowConfirmAccept() {
@@ -6207,9 +6207,10 @@ function voiceFlowConfirmReject() {
   const step = VOICE_FLOW[voiceFlowStep];
   voiceFlowConfirmRetries++;
   const el = document.getElementById(step.id);
-  // Segundo "no" seguido para el mismo campo: dejamos de insistir por voz,
-  // resaltamos el campo para carga manual y seguimos con el siguiente en vez
-  // de trabar el flujo guiado en un loop de reconocimiento fallido.
+  // Segundo rechazo seguido para el mismo campo (se habló durante la
+  // ventana de confirmación pasiva, o se tocó 🔁, dos veces): dejamos de
+  // insistir por voz, resaltamos el campo para carga manual y seguimos con
+  // el siguiente en vez de trabar el flujo guiado en un loop.
   if (voiceFlowConfirmRetries >= 2) {
     voiceFlowConfirming = false;
     voiceFlowConfirmRetries = 0;
