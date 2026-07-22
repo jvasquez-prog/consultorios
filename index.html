@@ -996,6 +996,12 @@ const FP = {
 //   parseSave:transformación antes de mandar a Airtable (ej. DNI a número)
 //   voiceQ:   pregunta hablada en el dictado guiado — si no tiene, ese campo
 //             no forma parte del dictado guiado (ej. Email)
+//   slowCapture: la captura por voz de este campo usa escucha continua con
+//             un margen de silencio de unos segundos antes de dar la
+//             respuesta por terminada, en vez de cortar apenas el motor
+//             detecta la primera pausa — para respuestas largas que se
+//             dictan con pausas naturales a mitad de frase (diagnóstico,
+//             antecedentes, notas), ver captureLongTextField
 const PAC_FIELDS = [
   { id:'pf-apellido',  rKey:'apellido',  label:'Apellido',            icon:'👤',  type:'text', required:true, combined:true, voiceQ:'Apellido del paciente' },
   { id:'pf-nombre',    rKey:'nombre',    label:'Nombre',              icon:'👤',  type:'text', required:true, combined:true, voiceQ:'Nombre del paciente' },
@@ -1007,9 +1013,9 @@ const PAC_FIELDS = [
   { id:'pf-tutor',     rKey:'tutor',     label:'Tutor',               icon:'👨‍👧', type:'text', fpKey:'tutor',      trim:true, voiceQ:'Nombre del tutor o responsable', longText:true },
   { id:'pf-tel',       rKey:'tel',       label:'Teléfono',            icon:'📞',  type:'text', fpKey:'telTutor',   trim:true, voiceQ:'Teléfono del tutor' },
   { id:'pf-email',     rKey:'email',     label:'Email',               icon:'📧',  type:'text', fpKey:'emailTutor', trim:true },
-  { id:'pf-diag',      rKey:'diag',      label:'Diagnóstico',         icon:'🩺',  type:'text', fpKey:'diag',       trim:true, voiceQ:'Diagnóstico principal' },
-  { id:'pf-ant',       rKey:'antec',     label:'Antecedentes',        icon:'📋',  type:'text', fpKey:'antec',      trim:true, voiceQ:'Antecedentes relevantes', longText:true },
-  { id:'pf-notas',     rKey:'notas',     label:'Notas',               icon:'📝',  type:'text', fpKey:'notas',      trim:true, voiceQ:'Notas clínicas', longText:true },
+  { id:'pf-diag',      rKey:'diag',      label:'Diagnóstico',         icon:'🩺',  type:'text', fpKey:'diag',       trim:true, voiceQ:'Diagnóstico principal', slowCapture:true },
+  { id:'pf-ant',       rKey:'antec',     label:'Antecedentes',        icon:'📋',  type:'text', fpKey:'antec',      trim:true, voiceQ:'Antecedentes relevantes', longText:true, slowCapture:true },
+  { id:'pf-notas',     rKey:'notas',     label:'Notas',               icon:'📝',  type:'text', fpKey:'notas',      trim:true, voiceQ:'Notas clínicas', longText:true, slowCapture:true },
 ];
 
 // Precarga el formulario de paciente a partir de un registro de Airtable —
@@ -6152,7 +6158,81 @@ function parseVoiceValue(type, text) {
 // eso lo decide onDone). La usan tanto el dictado guiado (voiceFlowCapture)
 // como el reintento dirigido de un solo campo (retryVoiceField), por eso
 // funciona con cualquier entrada de PAC_FIELDS, no sólo con VOICE_FLOW.
+// Margen de silencio real que debe pasar sin voz nueva antes de dar una
+// respuesta larga por terminada (Diagnóstico, Antecedentes, Notas — ver
+// `slowCapture` en PAC_FIELDS). continuous:false (el modo que usan el resto
+// de los campos) corta apenas el motor detecta la primera pausa, que es
+// perfecto para una respuesta de una o dos palabras pero corta a mitad de
+// frase en una respuesta más larga con pausas naturales para pensar. Acá se
+// usa escucha continua — mismo patrón ya probado en "hablar libremente" — y
+// un temporizador propio que se reinicia con cada resultado nuevo.
+const LONG_TEXT_SILENCE_MS = 3000;
+const LONG_TEXT_MAX_AUTO_RESTARTS = 6;
+function captureLongTextField(step, onDone) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { onDone({ skip: true }); return; }
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  const el = document.getElementById(step.id);
+  let transcript = '';
+  let advanced = false;
+  let autoRestarts = 0;
+  // Margen inicial más largo para empezar a hablar (mismo criterio que la
+  // red de seguridad de 12s del resto de los campos) — recién después de la
+  // primera palabra se pasa al margen de silencio corto de 3s entre pausas.
+  let silenceTimer = setTimeout(finish, 12000);
+  function finish() {
+    if (advanced) return;
+    advanced = true;
+    clearTimeout(silenceTimer);
+    if (voiceRecognition) { try { voiceRecognition.stop(); } catch(e) {} }
+  }
+  function resetSilenceTimer() {
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(finish, LONG_TEXT_SILENCE_MS);
+  }
+  function launch() {
+    voiceRecognition = new SR();
+    voiceRecognition.lang = 'es-AR';
+    voiceRecognition.continuous = true;
+    voiceRecognition.interimResults = true;
+    voiceRecognition.onresult = e => {
+      autoRestarts = 0;
+      resetSilenceTimer();
+      let fin = '', tmp = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          let seg = e.results[i][0].transcript.trim();
+          seg = stripOverlap(transcript + fin, seg);
+          if (seg) fin += seg + ' ';
+        } else tmp += e.results[i][0].transcript;
+      }
+      transcript += fin;
+      if (el) el.value = (transcript + tmp).trim();
+    };
+    voiceRecognition.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        advanced = true;
+        clearTimeout(silenceTimer);
+        showToast('Permiso de micrófono denegado — habilitalo en la configuración del sitio e intentá de nuevo');
+        if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+        onDone({ skip: true, denied: true });
+      }
+      // no-speech/network/aborted: se deja que onend decida si reintentar,
+      // igual que en "hablar libremente" — no se pierde lo ya dictado.
+    };
+    voiceRecognition.onend = () => {
+      voiceRecognition = null;
+      if (advanced) { onDone(parseVoiceValue(step.type, transcript.trim())); return; }
+      if (autoRestarts < LONG_TEXT_MAX_AUTO_RESTARTS) { autoRestarts++; launch(); }
+      else { advanced = true; clearTimeout(silenceTimer); onDone(parseVoiceValue(step.type, transcript.trim())); }
+    };
+    voiceRecognition.start();
+  }
+  launch();
+}
+
 function captureTypedField(step, onDone) {
+  if (step.slowCapture) { captureLongTextField(step, onDone); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { onDone({ skip: true }); return; }
   if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
