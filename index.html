@@ -5956,24 +5956,33 @@ function parseVoiceDate(text) {
 function speak(text, onEnd) {
   if (!('speechSynthesis' in window)) { onEnd && onEnd(); return; }
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'es-AR';
-  u.rate = 1.05;
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    clearInterval(resumeTimer);
-    clearTimeout(safetyTimer);
-    setTimeout(() => onEnd && onEnd(), 300);
-  };
-  u.onend = finish;
-  u.onerror = finish;
-  // Chrome a veces "pausa" el motor de síntesis en sesiones largas y nunca
-  // dispara onend, dejando el dictado guiado colgado a mitad de camino.
-  const resumeTimer = setInterval(() => { if (speechSynthesis.paused) speechSynthesis.resume(); }, 4000);
-  const safetyTimer = setTimeout(finish, Math.max(4000, text.length * 150));
-  speechSynthesis.speak(u);
+  // Casi todas las llamadas a speak() en el dictado guiado ocurren justo
+  // después de apagar el micrófono (recién capturado un campo, o recién
+  // terminada la ventana de confirmación pasiva). Sin una pausa acá, el
+  // dispositivo pasa de "grabando" a "reproduciendo audio" sin respiro, y
+  // las primeras sílabas de lo que la app dice pueden cortarse o directamente
+  // no sonar — antes esto sólo se cubría en el sentido inverso (300ms entre
+  // que la voz termina de hablar y se prende el micrófono, más abajo).
+  setTimeout(() => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'es-AR';
+    u.rate = 1.05;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearInterval(resumeTimer);
+      clearTimeout(safetyTimer);
+      setTimeout(() => onEnd && onEnd(), 300);
+    };
+    u.onend = finish;
+    u.onerror = finish;
+    // Chrome a veces "pausa" el motor de síntesis en sesiones largas y nunca
+    // dispara onend, dejando el dictado guiado colgado a mitad de camino.
+    const resumeTimer = setInterval(() => { if (speechSynthesis.paused) speechSynthesis.resume(); }, 4000);
+    const safetyTimer = setTimeout(finish, Math.max(4000, text.length * 150));
+    speechSynthesis.speak(u);
+  }, 300);
 }
 
 // Formatea un valor de campo para leerlo en voz alta en la confirmación
