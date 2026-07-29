@@ -691,28 +691,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
       <label class="form-label">Email</label>
       <input class="form-input" id="pf-email" type="email" placeholder="—" autocomplete="off"/>
     </div>
-    <div class="form-section-lbl">Clínica</div>
-    <div class="form-group">
-      <label class="form-label">Diagnóstico Principal</label>
-      <div style="display:flex;gap:6px">
-        <textarea class="form-input" id="pf-diag" rows="2" placeholder="Diagnóstico principal..." style="flex:1"></textarea>
-        <button type="button" onclick="startVoice('pf-diag')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0;align-self:flex-start;height:40px">🎤</button>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Antecedentes</label>
-      <div style="display:flex;gap:6px">
-        <textarea class="form-input" id="pf-ant" rows="2" placeholder="Antecedentes relevantes..." style="flex:1"></textarea>
-        <button type="button" onclick="startVoice('pf-ant')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0;align-self:flex-start;height:40px">🎤</button>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Notas Clínicas</label>
-      <div style="display:flex;gap:6px">
-        <textarea class="form-input" id="pf-notas" rows="2" placeholder="Observaciones, EF..." style="flex:1"></textarea>
-        <button type="button" onclick="startVoice('pf-notas')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0;align-self:flex-start;height:40px">🎤</button>
-      </div>
-    </div>
+    <div class="form-section-lbl">Historial clínico</div>
+    <div id="historial-list"></div>
     <div class="form-section-lbl">Archivos adjuntos</div>
     <div class="form-group">
       <label class="file-upload-label" for="pf-archivos">
@@ -724,6 +704,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     </div>
     <button class="btn-primary" id="pac-new-btn-save" onclick="savePac()">Guardar paciente</button>
     <button class="btn-danger" id="pac-new-btn-del" onclick="deletePac()" style="display:none">Eliminar paciente</button>
+    <button type="button" id="pac-new-btn-reporte" onclick="openReporteClinico()" style="display:none;width:100%;background:rgba(20,184,166,0.15);color:var(--teal);border:1px solid rgba(20,184,166,0.3);border-radius:var(--radius-sm);padding:11px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:6px">📄 Generar reporte clínico</button>
     <button class="btn-cancel" onclick="stopGuidedVoice();closeModal('modal-pac-new')">Cancelar</button>
   </div>
 </div>
@@ -740,6 +721,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);max
     </div>
   </div>
 </div>
+
+<!-- MODAL REPORTE CLÍNICO (elegir instancia/s para el PDF) -->
+<div class="modal-overlay" id="modal-reporte-instancias" onclick="closeModalOut(event,'modal-reporte-instancias')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Generar reporte clínico</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">La ficha completa del paciente siempre se incluye. Elegí qué parte del historial clínico va en el reporte.</div>
+    <div id="reporte-instancias-list" style="margin-bottom:14px"></div>
+    <button class="btn-primary" onclick="generarReportePdf()">📄 Generar PDF</button>
+    <button class="btn-cancel" onclick="closeModal('modal-reporte-instancias')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Área oculta usada sólo para armar el PDF del reporte clínico (ver printRecord/@media print) -->
+<div id="report-print-area" class="screen" style="display:none"></div>
 
 <!-- MODAL PERFIL -->
 <div class="modal-overlay" id="modal-perfil" onclick="closeModalOut(event,'modal-perfil')">
@@ -1013,10 +1009,13 @@ const PAC_FIELDS = [
   { id:'pf-tutor',     rKey:'tutor',     label:'Tutor',               icon:'👨‍👧', type:'text', fpKey:'tutor',      trim:true, voiceQ:'Nombre del tutor o responsable', longText:true },
   { id:'pf-tel',       rKey:'tel',       label:'Teléfono',            icon:'📞',  type:'text', fpKey:'telTutor',   trim:true, voiceQ:'Teléfono del tutor' },
   { id:'pf-email',     rKey:'email',     label:'Email',               icon:'📧',  type:'text', fpKey:'emailTutor', trim:true },
-  { id:'pf-diag',      rKey:'diag',      label:'Diagnóstico',         icon:'🩺',  type:'text', fpKey:'diag',       trim:true, voiceQ:'Diagnóstico principal', slowCapture:true },
-  { id:'pf-ant',       rKey:'antec',     label:'Antecedentes',        icon:'📋',  type:'text', fpKey:'antec',      trim:true, voiceQ:'Antecedentes relevantes', longText:true, slowCapture:true },
-  { id:'pf-notas',     rKey:'notas',     label:'Notas',               icon:'📝',  type:'text', fpKey:'notas',      trim:true, voiceQ:'Notas clínicas', longText:true, slowCapture:true },
 ];
+// Nota: Diagnóstico/Antecedentes/Notas dejaron de ser campos únicos del
+// paciente — ahora viven como instancias repetibles en el Historial
+// clínico (ver HIST_FIELDS, historialInstances y renderHistorialList()).
+// FP.diag/antec/notas siguen existiendo sólo para leer datos viejos ya
+// cargados y ofrecer migrarlos a la primera instancia (ver
+// checkLegacyClinicalMigration()).
 
 // Precarga el formulario de paciente a partir de un registro de Airtable —
 // usado tanto al editar desde el detalle (editCurrentPac) como al editar
@@ -1033,16 +1032,32 @@ function prefillPacForm(rec) {
   });
 }
 
-// CONSULTAS
+// CONSULTAS — historial clínico por instancias (una por visita/consulta),
+// vinculadas a PACIENTES_v3 vía FC.paciente. Antes esta tabla existía pero
+// no estaba conectada a la app; los datos clínicos vivían como 3 campos
+// únicos en el propio registro del paciente (ver migración en savePac()).
 const TC = 'tblQKFIHLSVAlpxn3';
 const FC = {
-  fecha:   'fldGmmU1cnyNKdHjB',  // Fecha de Atención (primary)
-  paciente:'fldnSjrIrUrdm5izW',  // Paciente (link)
-  diag:    'fldJJD0ot4apvzmFZ',  // Diagnóstico
-  trat:    'fldi74Cp34vRTwfgn',  // Tratamiento
-  obs:     'fldeshdzNrv2D0KGk',  // Observaciones
-  medico:  'fldMsSrco45MlwXXL'   // Médico
+  fecha:    'fldGmmU1cnyNKdHjB',  // Fecha de Atención (primary)
+  paciente: 'fldnSjrIrUrdm5izW',  // Paciente (link)
+  diag:     'fldJJD0ot4apvzmFZ',  // Diagnóstico
+  trat:     'fldi74Cp34vRTwfgn',  // Tratamiento
+  obs:      'fldeshdzNrv2D0KGk',  // Observaciones → usado como "Notas Clínicas"
+  medico:   'fldMsSrco45MlwXXL',  // Médico
+  antec:    'fldtuZwof4H98Mlvb',  // Antecedentes
+  archivos: 'fldFpBrRKmDw1gNro'   // Archivos
 };
+
+// Campos de una instancia del historial clínico — mismo espíritu que
+// PAC_FIELDS: una sola fuente de verdad para render, dictado por voz y
+// guardado. rKey se usa como key del objeto en memoria de cada instancia
+// (ver historialInstances); fcKey es el campo de Airtable en FC.
+const HIST_FIELDS = [
+  { rKey:'fecha', fcKey:'fecha', label:'Fecha',              icon:'📅', type:'date' },
+  { rKey:'diag',  fcKey:'diag',  label:'Diagnóstico Principal', icon:'🩺', type:'text', trim:true, longText:true, slowCapture:true },
+  { rKey:'antec', fcKey:'antec', label:'Antecedentes',        icon:'📋', type:'text', trim:true, longText:true, slowCapture:true },
+  { rKey:'notas', fcKey:'obs',   label:'Notas Clínicas',      icon:'📝', type:'text', trim:true, longText:true, slowCapture:true },
+];
 
 // VACUNAS
 const TV = 'tblhxDVxzcYcvLeF2';
@@ -2341,9 +2356,11 @@ async function openPacDetail(idx) {
     ${row('Nombre', tutor)}
     ${row('Teléfono', tel)}
     ${row('Email', email)}
+    <div style="height:1px;background:var(--border);margin:10px 0"></div>
+    <div id="pac-detail-historial" style="margin-bottom:4px"></div>
     ${diag || antec || notas ? `
       <div style="height:1px;background:var(--border);margin:10px 0"></div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Clínica</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Clínica (datos previos al historial)</div>
       ${diag  ? `<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--text3);margin-bottom:3px">Diagnóstico</div><div style="font-size:13px;color:var(--text2)">${escHtml(diag)}</div></div>` : ''}
       ${antec ? `<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--text3);margin-bottom:3px">Antecedentes</div><div style="font-size:13px;color:var(--text2)">${escHtml(antec)}</div></div>` : ''}
       ${notas ? `<div style="margin-bottom:8px"><div style="font-size:11px;color:var(--text3);margin-bottom:3px">Notas Clínicas</div><div style="font-size:13px;color:var(--text2)">${escHtml(notas)}</div></div>` : ''}
@@ -2351,6 +2368,7 @@ async function openPacDetail(idx) {
   `;
 
   document.getElementById('modal-pac-detail').classList.add('open');
+  fetchAndShowHistorialReadonly(rec.id);
 
   // Refrescar adjuntos desde Airtable
   const attachEl = document.getElementById('pac-detail-attach');
@@ -2369,6 +2387,128 @@ async function openPacDetail(idx) {
     }
   }
 
+// Historial clínico de sólo lectura para la ficha de detalle (modal-pac-detail)
+// — mismos datos que renderHistorialList() del formulario de edición, pero
+// sin controles de agregar/borrar/dictar.
+async function fetchAndShowHistorialReadonly(pacId) {
+  const el = document.getElementById('pac-detail-historial');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Historial clínico</div>
+    <div id="pac-detail-historial-body"><div class="loader" style="padding:4px 0"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div></div></div>`;
+  const recs = await fetchConsultasByPatient(pacId);
+  const body = document.getElementById('pac-detail-historial-body');
+  if (!body) return;
+  if (!recs.length) {
+    body.innerHTML = `<div style="font-size:12px;color:var(--text3)">Sin instancias registradas para este paciente.</div>`;
+    return;
+  }
+  const fld = (lbl, v) => v ? `<div style="margin-bottom:6px"><div style="font-size:11px;color:var(--text3);margin-bottom:2px">${lbl}</div><div style="font-size:13px;color:var(--text2);white-space:pre-wrap">${escHtml(v)}</div></div>` : '';
+  body.innerHTML = recs.map(rec => {
+    const fecha = rec.fields[FC.fecha] ? fmtDate(rec.fields[FC.fecha]) : 'Sin fecha';
+    const diagI  = rec.fields[FC.diag]  || '';
+    const antecI = rec.fields[FC.antec] || '';
+    const notasI = rec.fields[FC.obs]   || '';
+    const files  = rec.fields[FC.archivos] || [];
+    return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">${escHtml(fecha)}</div>
+      ${fld('Diagnóstico Principal', diagI)}
+      ${fld('Antecedentes', antecI)}
+      ${fld('Notas Clínicas', notasI)}
+      ${files.length ? renderAttachments(files) : ''}
+    </div>`;
+  }).join('');
+}
+
+// ===== REPORTE CLÍNICO EN PDF =====
+// Reusa el mismo mecanismo que printRecord(): un contenedor .screen oculto
+// que se marca .print-target justo antes de window.print() (ver hoja
+// @media print, más arriba) — sin agregar ninguna dependencia nueva.
+function openReporteClinico() {
+  if (!historialPacRec) { showToast('No se pudo cargar el paciente'); return; }
+  syncHistFromDom();
+  // Sólo se ofrecen instancias ya guardadas en Airtable — una recién
+  // agregada con "+ Nuevo" y sin guardar todavía no tiene fecha "oficial".
+  const activos = historialInstances.filter(i => !i.deleted && i.atId);
+  const listEl = document.getElementById('reporte-instancias-list');
+  if (!activos.length) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--text3)">Este paciente todavía no tiene instancias guardadas en el historial clínico. El reporte va a incluir sólo los datos generales.</div>`;
+  } else {
+    listEl.innerHTML = `
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer">
+        <input type="radio" name="reporte-inst" value="todas" checked/>
+        <span style="font-size:13px;color:var(--text)">Todas las instancias juntas</span>
+      </label>
+      ${activos.map(i => `
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;border-top:1px solid var(--border)">
+        <input type="radio" name="reporte-inst" value="${i.atId}"/>
+        <span style="font-size:13px;color:var(--text)">${escHtml(i.fecha ? fmtDate(i.fecha) : 'Sin fecha')}${i.diag ? ' — ' + escHtml((i.diag||'').substring(0,40)) : ''}</span>
+      </label>`).join('')}
+    `;
+  }
+  document.getElementById('modal-reporte-instancias').classList.add('open');
+}
+
+async function generarReportePdf() {
+  if (!historialPacRec) return;
+  const sel = document.querySelector('input[name="reporte-inst"]:checked');
+  const choice = sel ? sel.value : 'todas';
+  closeModal('modal-reporte-instancias');
+
+  const rec     = historialPacRec;
+  const nombre  = rec.fields[FP.nombre] || 'Sin nombre';
+  const fnac    = rec.fields[FP.fnac];
+  const edad    = calcEdad(fnac);
+  const edadStr = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
+  const sexo    = rec.fields[FP.sexo]?.name || rec.fields[FP.sexo] || '';
+  const dni     = rec.fields[FP.dni] ? `DNI ${Math.round(rec.fields[FP.dni]).toLocaleString()}` : '';
+  const os      = rec.fields[FP.obraSoc] || '';
+  const dom     = rec.fields[FP.domicilio] || '';
+  const tutor   = rec.fields[FP.tutor] || '';
+  const tel     = rec.fields[FP.telTutor] || '';
+  const row = (lbl, v) => v ? `<div class="review-field"><span class="review-field-lbl">${lbl}</span><span class="review-field-val">${escHtml(String(v))}</span></div>` : '';
+
+  let instRecs = [];
+  try { instRecs = await fetchConsultasByPatient(rec.id); } catch(_) {}
+  const seleccionadas = choice === 'todas' ? instRecs : instRecs.filter(r => r.id === choice);
+
+  const fldp = (lbl, v) => v ? `<div class="review-divider"></div><div class="review-lbl">${lbl}</div><div class="review-campo2">${escHtml(v)}</div>` : '';
+  const instHtml = seleccionadas.length ? seleccionadas.map(r => {
+    const fecha  = r.fields[FC.fecha] ? fmtDate(r.fields[FC.fecha]) : 'Sin fecha';
+    const diagI  = r.fields[FC.diag]  || '';
+    const antecI = r.fields[FC.antec] || '';
+    const notasI = r.fields[FC.obs]   || '';
+    return `<div class="review-card" style="margin-top:10px">
+      <div class="review-campo1" style="font-size:15px">${escHtml(fecha)}</div>
+      ${fldp('Diagnóstico Principal', diagI)}
+      ${fldp('Antecedentes', antecI)}
+      ${fldp('Notas Clínicas', notasI)}
+    </div>`;
+  }).join('') : `<div style="font-size:12px;color:var(--text3);margin-top:10px">Sin instancias del historial para incluir.</div>`;
+
+  const area = document.getElementById('report-print-area');
+  area.innerHTML = `
+    <div class="print-header">Reporte clínico — generado el ${fmtDate(new Date().toISOString().slice(0,10))}</div>
+    <div class="review-card">
+      <div class="review-lbl">Paciente</div>
+      <div class="review-campo1">${escHtml(nombre)}</div>
+      <div class="review-divider"></div>
+      ${row('Fecha nac.', fnac ? fmtDate(fnac) : '')}
+      ${row('Edad', edadStr)}
+      ${row('Sexo', sexo)}
+      ${row('DNI', dni)}
+      ${row('Obra Social', os)}
+      ${row('Domicilio', dom)}
+      ${tutor || tel ? `<div class="review-divider"></div><div class="review-lbl">Tutor / Responsable</div>${row('Nombre', tutor)}${row('Teléfono', tel)}` : ''}
+    </div>
+    ${instHtml}
+  `;
+
+  area.classList.add('print-target');
+  window.print();
+  setTimeout(() => area.classList.remove('print-target'), 1000);
+}
+
 function editCurrentPac() {
   closeModal('modal-pac-detail');
   if (!viewingPacId) return;
@@ -2377,12 +2517,14 @@ function editCurrentPac() {
   editingId = viewingPacId;
   document.getElementById('pac-new-title').textContent = 'Editar Paciente';
   document.getElementById('pac-new-btn-del').style.display = 'block';
+  document.getElementById('pac-new-btn-reporte').style.display = 'block';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar cambios';
   document.getElementById('pac-new-error').innerHTML = '';
   prefillPacForm(rec);
   document.getElementById('pf-archivos').value  = '';
   document.getElementById('pf-archivos-lbl').textContent = '📎 Agregar más archivos...';
   document.getElementById('pf-archivos-list').innerHTML = '';
+  loadHistorialForPatient(rec);
 
   // Resumen del paciente (lo que muestra la card en la lista)
   const sumEl = document.getElementById('pac-edit-summary');
@@ -2546,12 +2688,14 @@ function openNewPac() {
   if (sumEl) sumEl.style.display = 'none';
   document.getElementById('pac-new-title').textContent = 'Nuevo Paciente';
   document.getElementById('pac-new-btn-del').style.display = 'none';
+  document.getElementById('pac-new-btn-reporte').style.display = 'none';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar paciente';
   document.getElementById('pac-new-error').innerHTML = '';
   PAC_FIELDS.forEach(f => { const e = document.getElementById(f.id); if (e) e.value = ''; });
   document.getElementById('pf-archivos').value = '';
   document.getElementById('pf-archivos-lbl').textContent = '📎 Seleccionar archivos (JPG, PNG, PDF, DOC...)';
   document.getElementById('pf-archivos-list').innerHTML = '';
+  resetHistorialForNewPatient();
   stopGuidedVoice();
   resetFreeDictation();
   document.getElementById('modal-pac-new').classList.add('open');
@@ -2563,12 +2707,14 @@ function openEditPacById(recId) {
   editingId = recId;
   document.getElementById('pac-new-title').textContent = 'Editar Paciente';
   document.getElementById('pac-new-btn-del').style.display = 'block';
+  document.getElementById('pac-new-btn-reporte').style.display = 'block';
   document.getElementById('pac-new-btn-save').textContent = 'Guardar cambios';
   document.getElementById('pac-new-error').innerHTML = '';
   prefillPacForm(rec);
   document.getElementById('pf-archivos').value  = '';
   document.getElementById('pf-archivos-lbl').textContent = '📎 Agregar más archivos...';
   document.getElementById('pf-archivos-list').innerHTML = '';
+  loadHistorialForPatient(rec);
   document.getElementById('modal-pac-new').classList.add('open');
 }
 
@@ -2720,6 +2866,52 @@ async function savePac(force = false) {
         if (idx2 >= 0) allPacientes[idx2] = freshrec;
       } catch(_) {}
     }
+
+    // Guardar las instancias del Historial clínico en la tabla Consultas —
+    // mismo botón "Guardar paciente", un solo click. Lee los valores actuales
+    // del DOM (syncHistFromDom) por si el usuario tenía más de una instancia
+    // abierta a la vez.
+    btn.textContent = 'Guardando historial clínico...';
+    syncHistFromDom();
+    let legacyMigrated = false;
+    for (const inst of historialInstances) {
+      if (inst.deleted) {
+        if (inst.atId) {
+          try { await apiDelete(TC, inst.atId); } catch(e) { showToast(`⚠️ No se pudo borrar una instancia del historial: ${e.message}`, 6000); }
+        }
+        continue;
+      }
+      const hasContent = (inst.diag||'').trim() || (inst.antec||'').trim() || (inst.notas||'').trim() || inst.newFiles.length || inst.existingFiles.length;
+      if (!inst.atId && !hasContent) continue; // tarjeta "+ Nuevo" nunca tocada por el usuario
+
+      try {
+        let attachments = inst.existingFiles.map(a => ({url:a.url, filename:a.filename}));
+        for (const file of inst.newFiles) {
+          try { attachments.push(await uploadToCloudinary(file)); }
+          catch(fe) { showToast(`⚠️ Error al subir ${file.name}: ${fe.message}`, 6000); }
+        }
+        const histFields = {};
+        histFields[FC.paciente] = [rec.id];
+        histFields[FC.fecha]    = inst.fecha || new Date().toISOString().slice(0,10);
+        histFields[FC.diag]     = (inst.diag  || '').trim();
+        histFields[FC.antec]    = (inst.antec || '').trim();
+        histFields[FC.obs]      = (inst.notas || '').trim();
+        histFields[FC.archivos] = attachments;
+        const savedRec = inst.atId
+          ? await apiPatch(TC, inst.atId, histFields)
+          : await apiPost(TC, histFields);
+        if (!inst.atId) inst.atId = savedRec.id;
+        if (inst.migratedFromLegacy) legacyMigrated = true;
+      } catch(e) {
+        showToast(`⚠️ No se pudo guardar una instancia del historial: ${e.message}`, 6000);
+      }
+    }
+    // Recién si la migración de los campos únicos viejos se confirmó y la
+    // primera instancia quedó guardada con éxito, se limpian esos campos.
+    if (legacyMigrated) {
+      try { await apiPatch(TP, rec.id, {[FP.diag]:'', [FP.antec]:'', [FP.notas]:''}); } catch(_) {}
+    }
+
     closeModal('modal-pac-new');
     editingId = null;
     renderPacientes();
@@ -2754,6 +2946,254 @@ function updateFileLabel() {
   document.getElementById('pf-archivos-list').innerHTML = Array.from(files).map(f =>
     `<div class="file-item"><span style="font-size:14px">${f.type.includes('image')?'🖼️':f.type.includes('pdf')?'📄':'📝'}</span><span class="file-item-name">${f.name}</span><span style="font-size:11px;color:var(--text3)">${(f.size/1024).toFixed(0)} KB</span></div>`
   ).join('');
+}
+
+// ===== HISTORIAL CLÍNICO (instancias por consulta, tabla Consultas/TC) =====
+// El valor "vivo" de cada campo de texto/fecha vive en el DOM (mismo criterio
+// que el resto del formulario de paciente) — historialInstances sólo guarda
+// los valores iniciales para poder pintar el acordeón y, en savePac(), qué
+// instancias son nuevas/existentes/borradas y sus archivos adjuntos.
+let historialInstances = [];       // [{localId, atId, fecha, diag, antec, notas, existingFiles, newFiles, deleted}]
+let historialPacRec = null;        // registro crudo de PACIENTES_v3 (null = paciente todavía no guardado)
+let historialOpenIds = new Set();  // localIds actualmente expandidos, para no colapsar todo al re-renderizar
+let historialLegacyDismissed = false;
+let histLocalSeq = 0;
+
+async function fetchConsultasByPatient(pacId) {
+  if (!pacId) return [];
+  try {
+    // OJO: filterByFormula sobre un campo de vínculo (link) compara contra
+    // el campo primario (nombre) del registro vinculado, no contra su id de
+    // Airtable — probado contra la API real, FIND(pacId, ARRAYJOIN({...}))
+    // nunca matchea. Por eso acá se trae todo Consultas (apiAll ya pagina) y
+    // se filtra en el cliente, donde fields[FC.paciente] sí es el array de
+    // ids reales.
+    const all = await apiAll(TC, FC.fecha);
+    return all.filter(r => (r.fields[FC.paciente] || []).includes(pacId));
+  } catch(_) { return []; }
+}
+
+function consultaRecToInstance(rec) {
+  return {
+    localId: 'h' + (++histLocalSeq), atId: rec.id,
+    fecha: rec.fields[FC.fecha] || '', diag: rec.fields[FC.diag] || '',
+    antec: rec.fields[FC.antec] || '', notas: rec.fields[FC.obs] || '',
+    existingFiles: (rec.fields[FC.archivos] || []).map(a => ({url:a.url, filename:a.filename, type:a.type, size:a.size, thumbnails:a.thumbnails})),
+    newFiles: [], deleted: false,
+  };
+}
+
+function blankHistInstance() {
+  return {
+    localId: 'h' + (++histLocalSeq), atId: null,
+    fecha: new Date().toISOString().slice(0,10), diag: '', antec: '', notas: '',
+    existingFiles: [], newFiles: [], deleted: false,
+  };
+}
+
+// Trae del DOM al array en memoria lo que el usuario haya tipeado/dictado
+// antes de cualquier re-render — si no, agregar o borrar una instancia
+// (que reconstruye todo #historial-list) pisaría con los valores viejos
+// lo que se estaba escribiendo en las demás instancias abiertas.
+function syncHistFromDom() {
+  historialInstances.forEach(inst => {
+    if (inst.deleted) return;
+    HIST_FIELDS.forEach(f => {
+      const el = document.getElementById(`hist-${inst.localId}-${f.rKey}`);
+      if (el) inst[f.rKey] = el.value;
+    });
+  });
+}
+
+async function loadHistorialForPatient(rec) {
+  historialPacRec = rec;
+  historialLegacyDismissed = false;
+  historialOpenIds = new Set();
+  const cont = document.getElementById('historial-list');
+  if (cont) cont.innerHTML = `<div class="loader" style="padding:8px 0"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div></div>`;
+  const recs = await fetchConsultasByPatient(rec.id);
+  historialInstances = recs.map(consultaRecToInstance);
+  renderHistorialList();
+}
+
+function resetHistorialForNewPatient() {
+  historialPacRec = null;
+  historialInstances = [];
+  historialOpenIds = new Set();
+  historialLegacyDismissed = false;
+  renderHistorialList();
+}
+
+function toggleHistExpand(localId) {
+  toggleExpand('hist-' + localId);
+  if (historialOpenIds.has(localId)) historialOpenIds.delete(localId); else historialOpenIds.add(localId);
+}
+
+function addHistorialInstance() {
+  syncHistFromDom();
+  const inst = blankHistInstance();
+  historialInstances.push(inst);
+  historialOpenIds.add(inst.localId);
+  renderHistorialList();
+  const el = document.getElementById(`hist-${inst.localId}-diag`);
+  if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function removeHistorialInstance(localId) {
+  if (!confirm('¿Eliminar esta instancia del historial clínico?')) return;
+  syncHistFromDom();
+  const idx = historialInstances.findIndex(i => i.localId === localId);
+  if (idx < 0) return;
+  if (historialInstances[idx].atId) historialInstances[idx].deleted = true;
+  else historialInstances.splice(idx, 1);
+  historialOpenIds.delete(localId);
+  renderHistorialList();
+}
+
+function updateHistFileLabel(localId) {
+  const inst = historialInstances.find(i => i.localId === localId);
+  const input = document.getElementById(`hist-${localId}-archivos`);
+  if (!inst || !input) return;
+  inst.newFiles = Array.from(input.files || []);
+  const lblEl = document.getElementById(`hist-${localId}-archivos-lbl`);
+  if (lblEl) lblEl.textContent = inst.newFiles.length
+    ? `📎 ${inst.newFiles.length} archivo${inst.newFiles.length>1?'s':''} seleccionado${inst.newFiles.length>1?'s':''}`
+    : '📎 Seleccionar archivos';
+  const listEl = document.getElementById(`hist-${localId}-archivos-list`);
+  if (listEl) {
+    const newHtml = inst.newFiles.map(f =>
+      `<div class="file-item"><span style="font-size:14px">${f.type.includes('image')?'🖼️':f.type.includes('pdf')?'📄':'📝'}</span><span class="file-item-name">${f.name}</span><span style="font-size:11px;color:var(--text3)">${(f.size/1024).toFixed(0)} KB</span></div>`
+    ).join('');
+    listEl.innerHTML = renderAttachments(inst.existingFiles) + newHtml;
+  }
+}
+
+// Dictado por voz para los campos de una instancia — funciones propias en
+// vez de sumar estos ids dinámicos a PAC_FIELDS: startVoice()/retryVoiceField()
+// alimentan también el resumen de "hablar libremente" (showExtractionSummary
+// recorre TODO PAC_FIELDS), así que agregar ahí los campos del historial
+// terminaría mostrando chips de instancias sueltas en ese banner.
+function startVoiceHist(fieldId) {
+  showToast('🎤 Escuchando...');
+  captureLongTextField({id: fieldId, type:'text'}, result => {
+    if (result.skip) { if (!result.denied) showToast('No se detectó nada'); return; }
+    showToast('✓ Dictado completado');
+  });
+}
+
+function startVoiceHistDate(fieldId) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
+  if (voiceRecognition) { discardRecognition(voiceRecognition); voiceRecognition = null; }
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.lang = 'es-AR'; voiceRecognition.continuous = false; voiceRecognition.interimResults = false;
+  showToast('🎤 Escuchando — decí día, mes y año...');
+  voiceRecognition.onresult = e => {
+    const text = e.results[0][0].transcript;
+    const d = parseVoiceDate(text);
+    const el = document.getElementById(fieldId);
+    if (d && el) { el.value = d; el.dispatchEvent(new Event('input')); showToast('✓ Fecha reconocida'); }
+    else showToast('No entendí la fecha — probá decir sólo día, mes y año en números');
+  };
+  voiceRecognition.onerror = () => showToast('Error al reconocer voz. Intentá de nuevo.');
+  voiceRecognition.onend = () => { voiceRecognition = null; };
+  voiceRecognition.start();
+}
+
+function historialFieldHtml(inst, f) {
+  const id = `hist-${inst.localId}-${f.rKey}`;
+  const v = inst[f.rKey] || '';
+  if (f.type === 'date') {
+    return `
+    <div class="form-group">
+      <label class="form-label">${f.label}</label>
+      <div style="display:flex;gap:6px">
+        <input class="form-input" id="${id}" type="date" value="${escHtml(v)}" style="flex:1"/>
+        <button type="button" onclick="startVoiceHistDate('${id}')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0">🎤</button>
+      </div>
+    </div>`;
+  }
+  return `
+    <div class="form-group">
+      <label class="form-label">${f.label}</label>
+      <div style="display:flex;gap:6px">
+        <textarea class="form-input" id="${id}" rows="2" style="flex:1">${escHtml(v)}</textarea>
+        <button type="button" onclick="startVoiceHist('${id}')" title="Dictar por voz" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:16px;cursor:pointer;flex-shrink:0;align-self:flex-start;height:40px">🎤</button>
+      </div>
+    </div>`;
+}
+
+function historialCardHtml(inst) {
+  const open = historialOpenIds.has(inst.localId);
+  const fechaLbl = inst.fecha ? fmtDate(inst.fecha) : 'Sin fecha';
+  const diagPreview = (inst.diag || '').substring(0, 60);
+  const filesCount = (inst.existingFiles || []).length;
+  return `
+  <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;overflow:hidden">
+    <div onclick="toggleHistExpand('${inst.localId}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;gap:8px">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(fechaLbl)}</div>
+        <div style="font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${diagPreview ? escHtml(diagPreview) : 'Sin diagnóstico'}${filesCount ? ' · 📎 '+filesCount : ''}</div>
+      </div>
+      <button type="button" id="exp-btn-hist-${inst.localId}" class="expand-toggle${open?' open':''}" style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;flex-shrink:0">›</button>
+    </div>
+    <div id="exp-hist-${inst.localId}" style="display:${open?'block':'none'};padding:2px 12px 12px;border-top:1px solid var(--border)">
+      ${HIST_FIELDS.map(f => historialFieldHtml(inst, f)).join('')}
+      <div class="form-group" style="margin-top:8px">
+        <label class="form-label">Archivos adjuntos</label>
+        <label class="file-upload-label" for="hist-${inst.localId}-archivos">
+          <span id="hist-${inst.localId}-archivos-lbl">📎 Seleccionar archivos</span>
+          <input type="file" id="hist-${inst.localId}-archivos" multiple accept=".jpg,.jpeg,.png,.pdf,.doc,.docx" style="display:none" onchange="updateHistFileLabel('${inst.localId}')"/>
+        </label>
+        <div id="hist-${inst.localId}-archivos-list" class="file-list">${renderAttachments(inst.existingFiles)}</div>
+      </div>
+      <button type="button" onclick="removeHistorialInstance('${inst.localId}')" style="width:100%;margin-top:10px;padding:9px;background:rgba(248,113,113,0.12);color:var(--red);border:1px solid rgba(248,113,113,0.3);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer">🗑️ Eliminar esta instancia</button>
+    </div>
+  </div>`;
+}
+
+function historialAddCardHtml() {
+  return `<div onclick="addHistorialInstance()" style="display:flex;align-items:center;justify-content:center;gap:6px;background:var(--bg3);border:1px dashed var(--border2);border-radius:var(--radius);padding:12px;cursor:pointer;color:var(--blue2);font-size:13px;font-weight:600">+ Nuevo</div>`;
+}
+
+function historialLegacyMigrationHtml() {
+  if (!historialPacRec || historialLegacyDismissed) return '';
+  if (historialInstances.some(i => !i.deleted)) return '';
+  const diag = valP(historialPacRec, FP.diag), antec = valP(historialPacRec, FP.antec), notas = valP(historialPacRec, FP.notas);
+  if (!diag && !antec && !notas) return '';
+  return `
+    <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Este paciente tiene datos clínicos cargados de antes (Diagnóstico/Antecedentes/Notas), de cuando todavía no existía el historial por instancias.</div>
+      <button type="button" onclick="migrarClinicaLegacy()" style="width:100%;padding:9px;background:var(--blue2);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:6px">Convertir en primera entrada del historial</button>
+      <button type="button" onclick="historialLegacyDismissed=true;renderHistorialList()" style="width:100%;background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;text-decoration:underline">No por ahora</button>
+    </div>`;
+}
+
+function migrarClinicaLegacy() {
+  if (!historialPacRec) return;
+  const inst = blankHistInstance();
+  inst.diag  = valP(historialPacRec, FP.diag)  || '';
+  inst.antec = valP(historialPacRec, FP.antec) || '';
+  inst.notas = valP(historialPacRec, FP.notas) || '';
+  inst.migratedFromLegacy = true;
+  historialInstances.push(inst);
+  historialOpenIds.add(inst.localId);
+  renderHistorialList();
+  showToast('Revisá los datos y tocá "Guardar paciente" para confirmar la migración');
+}
+
+function renderHistorialList() {
+  const cont = document.getElementById('historial-list');
+  if (!cont) return;
+  if (!editingId) {
+    cont.innerHTML = `<div style="font-size:12px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">Guardá el paciente para poder cargar el historial clínico.</div>`;
+    return;
+  }
+  const activos = historialInstances.filter(i => !i.deleted);
+  cont.innerHTML =
+    historialLegacyMigrationHtml() +
+    (activos.length ? activos.map(historialCardHtml).join('') : `<div style="font-size:12px;color:var(--text3);padding:2px 0 10px">Sin instancias cargadas todavía.</div>`) +
+    historialAddCardHtml();
 }
 
 // ===== SEGUIMIENTOS =====
@@ -5622,6 +6062,22 @@ function applyExtraction(r) {
     if (!v) return;
     if (f.isSelect) selectFieldByText(f.id, v); else setFieldValue(f.id, v);
   });
+  // Diagnóstico/Antecedentes/Notas dictados en "hablar libremente" ya no son
+  // campos únicos del paciente (ver Historial clínico) — si el usuario los
+  // mencionó, se cargan como una instancia nueva para que no se pierdan.
+  // Sólo aplica si el paciente ya existe: uno nuevo todavía no tiene dónde
+  // vincular instancias (ver renderHistorialList).
+  if (editingId && (r.diag || r.antec || r.notas)) {
+    syncHistFromDom();
+    const inst = blankHistInstance();
+    inst.diag  = r.diag  || '';
+    inst.antec = r.antec || '';
+    inst.notas = r.notas || '';
+    historialInstances.push(inst);
+    historialOpenIds.add(inst.localId);
+    renderHistorialList();
+    showToast('🎤 Diagnóstico/Antecedentes/Notas agregados como una nueva instancia del historial clínico — revisala más abajo');
+  }
 }
 
 // Borra un campo del formulario con un solo toque (llamado desde las chips
@@ -6543,6 +6999,11 @@ function resetGuidedVoicePreset() {
 }
 
 function startVoice(targetId) {
+  // Diagnóstico/Antecedentes/Notas necesitan el margen de silencio real de
+  // captureLongTextField (ver retryVoiceField) — el modo simple de acá abajo
+  // corta en la primera pausa natural, mucho antes de los 3s reales.
+  const slowField = PAC_FIELDS.find(f => f.id === targetId && f.slowCapture);
+  if (slowField) { retryVoiceField(targetId); return; }
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { showToast('Tu navegador no soporta reconocimiento de voz'); return; }
   const el = document.getElementById(targetId);

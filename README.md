@@ -16,6 +16,35 @@ synapsis/
 
 ---
 
+## Deploy local (desarrollo / testing)
+
+Es una PWA sin build ni dependencias de npm: alcanza con `index.html` + `manifest.json` + `sw.js`. Pero **no la abras haciendo doble clic** (protocolo `file://`) — el dictado por voz (Web Speech API) y el Service Worker sólo funcionan servidos por `http://localhost` o `https`.
+
+### Opción A — Python (ya viene instalado en Linux/Mac)
+
+```bash
+cd red_consultorios_pediatricos/
+python3 -m http.server 8000
+```
+
+Abrí http://localhost:8000
+
+### Opción B — Node (npx serve)
+
+```bash
+npx serve -l 8000
+```
+
+### Opción C — VS Code, extensión "Live Server"
+
+Clic derecho sobre `index.html` → **"Open with Live Server"**
+
+### ⚠️ Ojo: apunta a la base de Airtable de producción
+
+El `TOKEN` y el `BASE` de Airtable están hardcodeados en `index.html` (cerca de la línea 960) y son los mismos que usa la app real. Cualquier paciente que cargues probando en local **se guarda en la base de datos real**, no en un sandbox. Si vas a testear cargas, considerá duplicar la base en Airtable y pisar `TOKEN`/`BASE` temporalmente en tu copia local antes de probar.
+
+---
+
 ## Pasos para deployar en Vercel
 
 ### Opción A — Desde GitHub (recomendada)
