@@ -340,6 +340,13 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* Print */
 @media print {
+  /* Sin esto, Chrome/Firefox no imprimen fondos ni tintes de color por
+     defecto (el usuario tendría que tildar "Gráficos de fondo" a mano en
+     el diálogo de impresión) — así los tags de estado (Aplicada/Atrasada/
+     Pendiente, con su fondo de color) se ven bien en pantalla pero salen
+     en blanco y negro en el PDF. Esto fuerza a respetar los colores tal
+     como están definidos, sin depender de esa opción del navegador. */
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
   #pin-overlay,#offline-bar{display:none!important}
   .app{height:auto;overflow:visible}
   .header .badge,.nav,.fab,.toast,.modal-overlay,.filter-panel,.card-actions,.review-nav,.btn-edit,.btn-del{display:none!important}
@@ -2526,23 +2533,60 @@ async function generarReporteVacunacion(pacId) {
   const dni     = pac.fields[FP.dni] ? `DNI ${Math.round(pac.fields[FP.dni]).toLocaleString()}` : '';
   const row = (lbl, v) => v ? `<div class="review-field"><span class="review-field-lbl">${lbl}</span><span class="review-field-val">${escHtml(String(v))}</span></div>` : '';
 
-  let recs = [];
-  try { recs = await fetchVacunasByPatient(pacId); } catch(_) {}
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const esAdulto = (edad ?? 0) > 15; // ver classifyVacuna(): a partir de los 15 años, "No aplicada" en vez de "Atrasada"
-  // Reporte = historial completo, sin las ventanas de tiempo que sí aplican
-  // en el panel "Vacunas pendientes" (acá interesa ver todo lo cargado).
-  const items = recs.map(r => {
-    const vacuna    = val(r, FV.vacuna) || 'Vacuna';
-    const edadInd   = val(r, FV.edadInd) || '';
-    const fechaProg = val(r, FV.fechaProg);
-    const aplicada  = !!val(r, FV.aplicada);
-    let label, cls;
-    if (aplicada) { label = 'Aplicada'; cls = 'tag-green'; }
-    else if (fechaProg && new Date(fechaProg + 'T12:00:00') < hoy) { label = esAdulto ? 'No aplicada' : 'Atrasada'; cls = 'tag-red'; }
-    else { label = 'Pendiente'; cls = 'tag-amber'; }
-    return { vacuna, edadInd, fechaProg, label, cls };
-  }).sort((a, b) => (a.fechaProg||'').localeCompare(b.fechaProg||''));
+
+  let items, emptyMsg;
+  if (!esAdulto && fnac) {
+    // Menores: el reporte tiene que mostrar EXACTAMENTE lo mismo que ya vio
+    // el usuario en el panel (renderVacunasPaciente) — el esquema calculado
+    // por edad, no lo cargado en Airtable (que suele estar incompleto para
+    // niños, porque ahí sólo se anotan turnos puntuales).
+    items = computePediatricVacSchedule(fnac, hoy).map(v => ({
+      vacuna: v.vacuna, edadInd: v.edad, fechaProg: v.fecha.toISOString().slice(0,10),
+      estado: 'pendiente', label: v.rem.label, cls: v.rem.cls,
+    }));
+    emptyMsg = 'Sin vacunas correspondientes a 2026 para este paciente según su edad.';
+  } else {
+    // Adultos (o sin fecha de nacimiento cargada): el esquema pediátrico no
+    // aplica — se usa el historial real cargado en Airtable, con el mismo
+    // criterio que el panel (classifyVacuna), incluida la ventana de 1 año
+    // hacia adelante para "Pendiente".
+    const anticipLimite = dateOffset(0, 1);
+    let recs = [];
+    try { recs = await fetchVacunasByPatient(pacId); } catch(_) {}
+    items = recs.map(r => {
+      const vacuna    = val(r, FV.vacuna) || 'Vacuna';
+      const edadInd   = val(r, FV.edadInd) || '';
+      const fechaProg = val(r, FV.fechaProg);
+      const aplicada  = !!val(r, FV.aplicada);
+      if (aplicada) return { vacuna, edadInd, fechaProg, estado:'aplicada', label:'Aplicada', cls:'tag-green' };
+      const st = classifyVacuna(fechaProg, false, hoy, hoy, anticipLimite, true);
+      if (!st) return null; // fuera de la ventana de 1 año — igual que el panel
+      return { vacuna, edadInd, fechaProg, estado:'pendiente', label: st.label, cls: st.cls };
+    }).filter(Boolean);
+    emptyMsg = 'Sin vacunas registradas para este paciente.';
+  }
+  items.sort((a, b) => (a.fechaProg||'').localeCompare(b.fechaProg||''));
+
+  // Resumen — mismos colores que las filas de abajo, para que se entienda
+  // de un vistazo antes de leer el detalle completo.
+  const aplicadas = items.filter(i => i.estado === 'aplicada').length;
+  const atrasadas = items.filter(i => i.estado === 'pendiente' && i.cls === 'tag-red').length;
+  const proximas  = items.filter(i => i.estado === 'pendiente' && i.cls === 'tag-amber').length;
+  const futuras   = items.filter(i => i.estado === 'pendiente' && i.cls === 'tag-green').length;
+  const resumenChip = (n, lbl, cls) => n ? `<span class="tag ${cls}" style="font-size:12px;padding:5px 12px;margin:0 6px 6px 0">${n} ${lbl}</span>` : '';
+  const resumenHtml = `
+    <div class="review-card" style="margin-top:10px">
+      <div class="review-lbl">Resumen</div>
+      <div class="review-divider"></div>
+      <div style="display:flex;flex-wrap:wrap">
+        ${resumenChip(aplicadas, aplicadas===1?'aplicada':'aplicadas', 'tag-green')}
+        ${resumenChip(atrasadas, esAdulto ? (atrasadas===1?'no aplicada':'no aplicadas') : (atrasadas===1?'atrasada':'atrasadas'), 'tag-red')}
+        ${resumenChip(proximas, proximas===1?'próxima / pendiente':'próximas / pendientes', 'tag-amber')}
+        ${resumenChip(futuras, futuras===1?'programada más adelante':'programadas más adelante', 'tag-green')}
+      </div>
+    </div>`;
 
   const rowsHtml = items.length ? items.map(it => `
     <div class="review-field" style="align-items:center">
@@ -2550,7 +2594,7 @@ async function generarReporteVacunacion(pacId) {
       <span class="review-field-val" style="text-align:right;flex:0 0 auto;white-space:nowrap">
         <span class="tag ${it.cls}" style="margin-right:6px">${it.label}</span>${it.fechaProg ? fmtDate(it.fechaProg) : ''}
       </span>
-    </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">Sin vacunas registradas para este paciente.</div>`;
+    </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">${emptyMsg}</div>`;
 
   const area = document.getElementById('report-print-area');
   area.innerHTML = `
@@ -2563,6 +2607,7 @@ async function generarReporteVacunacion(pacId) {
       ${row('Edad', edadStr)}
       ${row('DNI', dni)}
     </div>
+    ${items.length ? resumenHtml : ''}
     <div class="review-card" style="margin-top:10px">
       <div class="review-lbl">Historial de vacunación</div>
       <div class="review-divider"></div>
@@ -3437,6 +3482,19 @@ const PEDIATRIC_VACUNAS_SCHEDULE = [
   { meses: 132,edad: '11 años',  vacuna: 'Doble Bacteriana (dT)',         dosis: 'Única dosis' },
 ];
 
+// Única fuente de verdad para el esquema pediátrico calculado por edad —
+// la usan tanto el panel por paciente (renderVacunasPaciente) como el
+// reporte de vacunación (generarReporteVacunacion), para que ambos
+// muestren siempre exactamente lo mismo.
+function computePediatricVacSchedule(fnac, hoy) {
+  const nacimiento = new Date(fnac + 'T00:00:00');
+  return PEDIATRIC_VACUNAS_SCHEDULE.map(v => {
+    const fecha = new Date(nacimiento); fecha.setMonth(fecha.getMonth() + v.meses);
+    const rem = fmtRemaining(fecha, hoy);
+    return { ...v, fecha, rem };
+  }).filter(v => v.fecha.getFullYear() === 2026 || (v.fecha.getFullYear() < 2026 && v.rem.cls === 'tag-red'));
+}
+
 function loadCalendarioVacunacion() {
   const el = document.getElementById('list-cal');
   if (!el) return;
@@ -3535,12 +3593,7 @@ async function renderVacunasPaciente(pacId) {
     return;
   }
 
-  const nacimiento = new Date(fnac + 'T00:00:00');
-  const filas = PEDIATRIC_VACUNAS_SCHEDULE.map(v => {
-    const fecha = new Date(nacimiento); fecha.setMonth(fecha.getMonth() + v.meses);
-    const rem = fmtRemaining(fecha, hoy);
-    return { ...v, fecha, rem };
-  }).filter(v => v.fecha.getFullYear() === 2026 || (v.fecha.getFullYear() < 2026 && v.rem.cls === 'tag-red'));
+  const filas = computePediatricVacSchedule(fnac, hoy);
   if (!filas.length) {
     box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Sin vacunas correspondientes a 2026 para este paciente según su edad.</div></div>${reporteBtnHtml}`;
     return;
