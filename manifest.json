@@ -4,8 +4,8 @@
   "description": "Sistema de gestión de pacientes para consultorios pediátricos particulares",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0B1120",
-  "theme_color": "#0B1120",
+  "background_color": "#F2F5F3",
+  "theme_color": "#FFFFFF",
   "orientation": "portrait",
   "icons": [
     {
