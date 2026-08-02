@@ -156,6 +156,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* Seguimientos */
 .seg-card{border-left:3px solid var(--amber)}
 .seg-card.vencido{border-left-color:var(--red)}
+.seg-card.cumplido{border-left-color:var(--green)}
 
 /* Toast */
 .toast{position:fixed;bottom:calc(88px + var(--safe-bottom));left:50%;transform:translateX(-50%) translateY(20px);background:#1E2B45;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 18px;font-size:13px;color:var(--text);z-index:500;opacity:0;transition:all 0.25s;pointer-events:none;white-space:nowrap}
@@ -2504,6 +2505,75 @@ async function generarReportePdf() {
   setTimeout(() => area.classList.remove('print-target'), 1000);
 }
 
+// ===== REPORTE DE HISTORIAL DE VACUNACIÓN (por paciente) =====
+async function fetchVacunasByPatient(pacId) {
+  if (!pacId) return [];
+  try {
+    // Mismo caso que fetchConsultasByPatient: filterByFormula sobre un campo
+    // de vínculo compara por nombre, no por id — se trae todo y se filtra acá.
+    const all = await apiAll(TV, FV.fechaProg);
+    return all.filter(r => (r.fields[FV.paciente] || []).includes(pacId));
+  } catch(_) { return []; }
+}
+
+async function generarReporteVacunacion(pacId) {
+  const pac = allPacientes.find(p => p.id === pacId);
+  if (!pac) { showToast('No se pudo cargar el paciente'); return; }
+  const nombre  = pac.fields[FP.nombre] || 'Sin nombre';
+  const fnac    = pac.fields[FP.fnac];
+  const edad    = calcEdad(fnac);
+  const edadStr = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
+  const dni     = pac.fields[FP.dni] ? `DNI ${Math.round(pac.fields[FP.dni]).toLocaleString()}` : '';
+  const row = (lbl, v) => v ? `<div class="review-field"><span class="review-field-lbl">${lbl}</span><span class="review-field-val">${escHtml(String(v))}</span></div>` : '';
+
+  let recs = [];
+  try { recs = await fetchVacunasByPatient(pacId); } catch(_) {}
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const esAdulto = (edad ?? 0) > 15; // ver classifyVacuna(): a partir de los 15 años, "No aplicada" en vez de "Atrasada"
+  // Reporte = historial completo, sin las ventanas de tiempo que sí aplican
+  // en el panel "Vacunas pendientes" (acá interesa ver todo lo cargado).
+  const items = recs.map(r => {
+    const vacuna    = val(r, FV.vacuna) || 'Vacuna';
+    const edadInd   = val(r, FV.edadInd) || '';
+    const fechaProg = val(r, FV.fechaProg);
+    const aplicada  = !!val(r, FV.aplicada);
+    let label, cls;
+    if (aplicada) { label = 'Aplicada'; cls = 'tag-green'; }
+    else if (fechaProg && new Date(fechaProg + 'T12:00:00') < hoy) { label = esAdulto ? 'No aplicada' : 'Atrasada'; cls = 'tag-red'; }
+    else { label = 'Pendiente'; cls = 'tag-amber'; }
+    return { vacuna, edadInd, fechaProg, label, cls };
+  }).sort((a, b) => (a.fechaProg||'').localeCompare(b.fechaProg||''));
+
+  const rowsHtml = items.length ? items.map(it => `
+    <div class="review-field" style="align-items:center">
+      <span class="review-field-lbl" style="width:auto;flex:1;color:var(--text)">${escHtml(it.vacuna)}${it.edadInd ? ' · ' + escHtml(it.edadInd) : ''}</span>
+      <span class="review-field-val" style="text-align:right;flex:0 0 auto;white-space:nowrap">
+        <span class="tag ${it.cls}" style="margin-right:6px">${it.label}</span>${it.fechaProg ? fmtDate(it.fechaProg) : ''}
+      </span>
+    </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">Sin vacunas registradas para este paciente.</div>`;
+
+  const area = document.getElementById('report-print-area');
+  area.innerHTML = `
+    <div class="print-header">Reporte de vacunación — generado el ${fmtDate(new Date().toISOString().slice(0,10))}</div>
+    <div class="review-card">
+      <div class="review-lbl">Paciente</div>
+      <div class="review-campo1">${escHtml(nombre)}</div>
+      <div class="review-divider"></div>
+      ${row('Fecha nac.', fnac ? fmtDate(fnac) : '')}
+      ${row('Edad', edadStr)}
+      ${row('DNI', dni)}
+    </div>
+    <div class="review-card" style="margin-top:10px">
+      <div class="review-lbl">Historial de vacunación</div>
+      <div class="review-divider"></div>
+      ${rowsHtml}
+    </div>
+  `;
+  area.classList.add('print-target');
+  window.print();
+  setTimeout(() => area.classList.remove('print-target'), 1000);
+}
+
 function editCurrentPac() {
   closeModal('modal-pac-detail');
   if (!viewingPacId) return;
@@ -3123,6 +3193,64 @@ function renderHistorialList() {
 }
 
 // ===== SEGUIMIENTOS =====
+// Límites de fecha para las ventanas de los paneles Vacunas/Controles — ver
+// classifyVacuna()/classifyControl(). setMonth/setFullYear en vez de restar
+// días fijos, para que "2 meses"/"3 meses"/"1 año" respeten el largo real
+// de cada mes.
+function dateOffset(months, years) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  if (months) d.setMonth(d.getMonth() + months);
+  if (years)  d.setFullYear(d.getFullYear() + years);
+  return d;
+}
+
+// A partir de los 15 años el criterio de estos dos paneles cambia — ver
+// classifyVacuna/classifyControl — por eso ambas necesitan la edad del
+// paciente dueño de cada registro, no sólo la fecha del registro en sí.
+function edadPacienteDeRecord(fields, pacienteFieldId) {
+  const pacLinks = fields[pacienteFieldId] || [];
+  if (!pacLinks.length) return null;
+  const pac = allPacientes.find(p => p.id === pacLinks[0]);
+  return pac ? calcEdad(pac.fields[FP.fnac]) : null;
+}
+
+// Clasifica una vacuna en Aplicada/Pendiente/Atrasada (o "No aplicada" para
+// mayores de 15 años) según su fecha programada, si ya se aplicó, y la edad
+// del paciente. Para menores, "Atrasada" y "Pendiente" están acotadas a una
+// ventana [atrasLimite, anticipLimite] para no saturar el panel con historial
+// viejo. Para mayores de 15, "No aplicada" no tiene límite hacia atrás (una
+// vacuna nunca aplicada sigue siendo relevante sin importar hace cuánto se
+// venció) — sólo "Pendiente" sigue acotada a 1 año de anticipación.
+// Devuelve null si el registro no debe mostrarse.
+function classifyVacuna(fechaProgStr, aplicada, hoy, atrasLimite, anticipLimite, esAdulto) {
+  if (!fechaProgStr) return null;
+  const fecha = new Date(fechaProgStr + 'T12:00:00');
+  if (esAdulto) {
+    if (aplicada) return { label: 'Aplicada', cls: 'tag-green', mod: 'cumplido' };
+    if (fecha < hoy) return { label: 'No aplicada', cls: 'tag-red', mod: 'vencido' };
+    if (fecha > anticipLimite) return null;
+    return { label: 'Pendiente', cls: 'tag-amber', mod: '' };
+  }
+  if (fecha < atrasLimite || fecha > anticipLimite) return null;
+  if (aplicada) return { label: 'Aplicada', cls: 'tag-green', mod: 'cumplido' };
+  if (fecha < hoy) return { label: 'Atrasada', cls: 'tag-red', mod: 'vencido' };
+  return { label: 'Pendiente', cls: 'tag-amber', mod: '' };
+}
+
+// Clasifica un control en Cumplido/Pendiente/Atrasado según edad — para
+// mayores de 15 años el panel sólo debe mostrar los turnos ya Cumplidos
+// (sin límite de fecha); Atrasado/Pendiente quedan ocultos por completo.
+// Para menores se mantiene la ventana [atrasLimite, anticipLimite] de siempre.
+function classifyControl(fechaProgStr, realizado, hoy, atrasLimite, anticipLimite, esAdulto) {
+  if (!fechaProgStr) return null;
+  if (esAdulto) return realizado ? { label: 'Cumplido', cls: 'tag-green', mod: 'cumplido' } : null;
+  const fecha = new Date(fechaProgStr + 'T12:00:00');
+  if (fecha < atrasLimite || fecha > anticipLimite) return null;
+  if (realizado) return { label: 'Cumplido', cls: 'tag-green', mod: 'cumplido' };
+  if (fecha < hoy) return { label: 'Atrasado', cls: 'tag-red', mod: 'vencido' };
+  return { label: 'Pendiente', cls: 'tag-amber', mod: '' };
+}
+
 // ===== VACUNAS =====
 async function loadVacunas() {
   const selEl = document.getElementById('vac-pac-selector-wrap');
@@ -3130,33 +3258,42 @@ async function loadVacunas() {
   const el = document.getElementById('list-seg');
   el.innerHTML = '<div class="loader"><div class="spinner"></div>Cargando...</div>';
   try {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const atrasLimite    = dateOffset(-3, 0); // Atrasada (menores): hasta 3 meses de retraso
+    const anticipLimite  = dateOffset(0, 1);  // Pendiente: hasta 1 año de anticipación
     const p = new URLSearchParams();
     p.append('returnFieldsByFieldId', 'true');
-    p.append('filterByFormula', `{${FV.aplicada}}=FALSE()`);
+    // Sin cota hacia atrás en la fórmula — "No aplicada" (mayores de 15) no
+    // tiene límite de cuán vieja sea; el recorte por edad se hace en el
+    // cliente, en classifyVacuna(). Sólo se acota hacia adelante.
+    p.append('filterByFormula', `IS_BEFORE({${FV.fechaProg}},DATEADD(TODAY(),1,'years'))`);
     p.append('sort[0][field]', FV.fechaProg);
     p.append('sort[0][direction]', 'asc');
     p.append('maxRecords', '200');
     const d = await apiFetch(TV, '?' + p);
     const recs = d.records || [];
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    if (!recs.length) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">💉</div><div class="empty-msg">Sin vacunas pendientes</div></div>';
+    const items = recs.map(r => {
+      const fechaProg = val(r, FV.fechaProg);
+      const esAdulto = (edadPacienteDeRecord(r.fields, FV.paciente) ?? 0) > 15;
+      const st = classifyVacuna(fechaProg, !!val(r, FV.aplicada), hoy, atrasLimite, anticipLimite, esAdulto);
+      return st ? { r, fechaProg, st } : null;
+    }).filter(Boolean);
+    if (!items.length) {
+      el.innerHTML = '<div class="empty"><div class="empty-icon">💉</div><div class="empty-msg">Sin vacunas para mostrar</div></div>';
       return;
     }
-    el.innerHTML = recs.map(r => {
+    el.innerHTML = items.map(({r, fechaProg, st}) => {
       const vacuna   = val(r, FV.vacuna) || 'Vacuna';
       const pacLinks = r.fields[FV.paciente] || [];
       const pacNombre= pacLinks.length ? (allPacientes.find(p=>p.id===pacLinks[0])?.fields[FP.nombre] || pacLinks[0]) : '—';
       const edadInd  = val(r, FV.edadInd) || '';
-      const fechaProg= val(r, FV.fechaProg);
-      const venc     = fechaProg && new Date(fechaProg + 'T12:00:00') < hoy;
-      return `<div class="card seg-card${venc ? ' vencido' : ''}">
+      return `<div class="card seg-card${st.mod ? ' '+st.mod : ''}">
         <div class="card-header">
           <div class="card-title">💉 ${escHtml(vacuna)}</div>
           ${fechaProg ? `<span class="date-chip">${fmtDate(fechaProg)}</span>` : ''}
         </div>
         <div class="card-sub">${escHtml(pacNombre)}${edadInd ? ' · ' + escHtml(edadInd) : ''}</div>
-        <div class="card-meta">${venc ? '<span class="tag tag-red">Vencida</span>' : '<span class="tag tag-amber">Pendiente</span>'}</div>
+        <div class="card-meta"><span class="tag ${st.cls}">${st.label}</span></div>
       </div>`;
     }).join('');
   } catch(e) {
@@ -3171,35 +3308,44 @@ async function loadControles() {
   const el = document.getElementById('list-ctrl');
   el.innerHTML = '<div class="loader"><div class="spinner"></div>Cargando...</div>';
   try {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const atrasLimite    = dateOffset(-2, 0); // Atrasadas (menores): no más de 2 meses
+    const anticipLimite  = dateOffset(0, 1);  // Pendientes: hasta 1 año de anticipación
     const p = new URLSearchParams();
     p.append('returnFieldsByFieldId', 'true');
-    p.append('filterByFormula', `{${FCo.realizado}}=FALSE()`);
+    // Sin cota hacia atrás en la fórmula — para mayores de 15 años, "Cumplido"
+    // no tiene límite de fecha; el recorte por edad se hace en el cliente,
+    // en classifyControl(). Sólo se acota hacia adelante.
+    p.append('filterByFormula', `IS_BEFORE({${FCo.fechaProg}},DATEADD(TODAY(),1,'years'))`);
     p.append('sort[0][field]', FCo.fechaProg);
     p.append('sort[0][direction]', 'asc');
     p.append('maxRecords', '200');
     const d = await apiFetch(TCo, '?' + p);
     const recs = d.records || [];
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    if (!recs.length) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-msg">Sin controles pendientes</div></div>';
+    const items = recs.map(r => {
+      const fechaProg = val(r, FCo.fechaProg);
+      const esAdulto = (edadPacienteDeRecord(r.fields, FCo.paciente) ?? 0) > 15;
+      const st = classifyControl(fechaProg, !!val(r, FCo.realizado), hoy, atrasLimite, anticipLimite, esAdulto);
+      return st ? { r, fechaProg, st } : null;
+    }).filter(Boolean);
+    if (!items.length) {
+      el.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-msg">Sin controles para mostrar</div></div>';
       return;
     }
-    el.innerHTML = recs.map(r => {
+    el.innerHTML = items.map(({r, fechaProg, st}) => {
       const tipo     = val(r, FCo.tipo) || 'Control';
       const pacLinks = r.fields[FCo.paciente] || [];
       const pacNombre= pacLinks.length ? (allPacientes.find(p=>p.id===pacLinks[0])?.fields[FP.nombre] || pacLinks[0]) : '—';
       const edad     = val(r, FCo.edad) || '';
-      const fechaProg= val(r, FCo.fechaProg);
-      const venc     = fechaProg && new Date(fechaProg + 'T12:00:00') < hoy;
       const obs      = val(r, FCo.obs) || '';
-      return `<div class="card seg-card${venc ? ' vencido' : ''}">
+      return `<div class="card seg-card${st.mod ? ' '+st.mod : ''}">
         <div class="card-header">
           <div class="card-title">📅 ${escHtml(tipo)}</div>
           ${fechaProg ? `<span class="date-chip">${fmtDate(fechaProg)}</span>` : ''}
         </div>
         <div class="card-sub">${escHtml(pacNombre)}${edad ? ' · ' + escHtml(edad) : ''}</div>
         ${obs ? `<div class="card-sub" style="margin-top:4px">${escHtml(obs.substring(0,60))}</div>` : ''}
-        <div class="card-meta">${venc ? '<span class="tag tag-red">Vencido</span>' : '<span class="tag tag-amber">Pendiente</span>'}</div>
+        <div class="card-meta"><span class="tag ${st.cls}">${st.label}</span></div>
       </div>`;
     }).join('');
   } catch(e) {
@@ -3343,22 +3489,60 @@ function pacienteSelectorHtml(selectId, onchangeFn) {
     </div>`;
 }
 
-function renderVacunasPaciente(pacId) {
+async function renderVacunasPaciente(pacId) {
   const box = document.getElementById('vac-pac-box');
   if (!box) return;
   if (!pacId) { box.innerHTML = ''; return; }
   const pac = allPacientes.find(p => p.id === pacId);
-  const fnac = pac && pac.fields[FP.fnac];
-  if (!fnac) { box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Este paciente no tiene fecha de nacimiento cargada.</div></div>`; return; }
-  const nacimiento = new Date(fnac + 'T00:00:00');
+  if (!pac) { box.innerHTML = ''; return; }
+  const reporteBtnHtml = `<button type="button" onclick="generarReporteVacunacion('${pacId}')" style="width:100%;margin-top:10px;padding:11px;background:rgba(62,122,140,0.12);color:var(--teal);border:1px solid rgba(62,122,140,0.3);border-radius:var(--radius-sm);font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">📄 Generar reporte de vacunación</button>`;
+  const fnac = pac.fields[FP.fnac];
+  if (!fnac) {
+    box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Este paciente no tiene fecha de nacimiento cargada.</div></div>${reporteBtnHtml}`;
+    return;
+  }
   const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const edad = calcEdad(fnac);
+
+  // El esquema pediátrico (PEDIATRIC_VACUNAS_SCHEDULE) llega sólo hasta los
+  // 11 años — para un paciente mayor de 15, esas fechas caen todas décadas
+  // atrás y aparecían como "Atrasada" en cada fila. A partir de los 15 años
+  // se muestra en cambio el historial real cargado en Airtable, con el mismo
+  // criterio Aplicada/No aplicada/Pendiente que usa el panel general.
+  if (edad !== null && edad > 15) {
+    box.innerHTML = `<div class="loader" style="padding:16px"><div class="spinner"></div>Cargando...</div>`;
+    const anticipLimite = dateOffset(0, 1);
+    let recs = [];
+    try { recs = await fetchVacunasByPatient(pacId); } catch(_) {}
+    const items = recs.map(r => {
+      const fechaProg = val(r, FV.fechaProg);
+      const st = classifyVacuna(fechaProg, !!val(r, FV.aplicada), hoy, hoy, anticipLimite, true);
+      return st ? { r, fechaProg, st } : null;
+    }).filter(Boolean).sort((a, b) => (a.fechaProg||'').localeCompare(b.fechaProg||''));
+    const listHtml = items.length ? items.map(({r, fechaProg, st}) => {
+      const vacuna  = val(r, FV.vacuna) || 'Vacuna';
+      const edadInd = val(r, FV.edadInd) || '';
+      return `<div class="card seg-card${st.mod ? ' '+st.mod : ''}" style="margin-bottom:8px">
+        <div class="card-header">
+          <div class="card-title">💉 ${escHtml(vacuna)}</div>
+          ${fechaProg ? `<span class="date-chip">${fmtDate(fechaProg)}</span>` : ''}
+        </div>
+        ${edadInd ? `<div class="card-sub">${escHtml(edadInd)}</div>` : ''}
+        <div class="card-meta"><span class="tag ${st.cls}">${st.label}</span></div>
+      </div>`;
+    }).join('') : `<div class="empty" style="padding:16px"><div class="empty-msg">Sin vacunas registradas para este paciente.</div></div>`;
+    box.innerHTML = listHtml + reporteBtnHtml;
+    return;
+  }
+
+  const nacimiento = new Date(fnac + 'T00:00:00');
   const filas = PEDIATRIC_VACUNAS_SCHEDULE.map(v => {
     const fecha = new Date(nacimiento); fecha.setMonth(fecha.getMonth() + v.meses);
     const rem = fmtRemaining(fecha, hoy);
     return { ...v, fecha, rem };
   }).filter(v => v.fecha.getFullYear() === 2026 || (v.fecha.getFullYear() < 2026 && v.rem.cls === 'tag-red'));
   if (!filas.length) {
-    box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Sin vacunas correspondientes a 2026 para este paciente según su edad.</div></div>`;
+    box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Sin vacunas correspondientes a 2026 para este paciente según su edad.</div></div>${reporteBtnHtml}`;
     return;
   }
   box.innerHTML = `
@@ -3371,7 +3555,8 @@ function renderVacunasPaciente(pacId) {
         </div>
         <div class="card-sub">${escHtml(v.edad)} · ${escHtml(v.dosis)}</div>
         <div class="card-meta"><span class="tag ${v.rem.cls}">${v.rem.label}</span></div>
-      </div>`).join('')}`;
+      </div>`).join('')}
+    ${reporteBtnHtml}`;
 }
 
 function generarControlesEsperados(fnacStr) {
@@ -3394,7 +3579,18 @@ function generarControlesEsperados(fnacStr) {
   return controles;
 }
 
-function renderControlesPaciente(pacId) {
+// Mismo caso que fetchConsultasByPatient/fetchVacunasByPatient: filterByFormula
+// sobre un campo de vínculo compara por nombre, no por id — se trae todo y se
+// filtra acá.
+async function fetchControlesByPatient(pacId) {
+  if (!pacId) return [];
+  try {
+    const all = await apiAll(TCo, FCo.fechaProg);
+    return all.filter(r => (r.fields[FCo.paciente] || []).includes(pacId));
+  } catch(_) { return []; }
+}
+
+async function renderControlesPaciente(pacId) {
   const box = document.getElementById('ctrl-pac-box');
   if (!box) return;
   if (!pacId) { box.innerHTML = ''; return; }
@@ -3402,6 +3598,35 @@ function renderControlesPaciente(pacId) {
   const fnac = pac && pac.fields[FP.fnac];
   if (!fnac) { box.innerHTML = `<div class="empty" style="padding:16px"><div class="empty-msg">Este paciente no tiene fecha de nacimiento cargada.</div></div>`; return; }
   const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const edad = calcEdad(fnac);
+
+  // El esquema calculado (generarControlesEsperados) llega sólo hasta los 12
+  // años — a partir de los 15 se muestra en cambio el historial real cargado
+  // en Airtable, y sólo los turnos Cumplidos (ver classifyControl).
+  if (edad !== null && edad > 15) {
+    box.innerHTML = `<div class="loader" style="padding:16px"><div class="spinner"></div>Cargando...</div>`;
+    let recs = [];
+    try { recs = await fetchControlesByPatient(pacId); } catch(_) {}
+    const items = recs.map(r => {
+      const fechaProg = val(r, FCo.fechaProg);
+      const st = classifyControl(fechaProg, !!val(r, FCo.realizado), hoy, hoy, hoy, true);
+      return st ? { r, fechaProg, st } : null;
+    }).filter(Boolean).sort((a, b) => (a.fechaProg||'').localeCompare(b.fechaProg||''));
+    box.innerHTML = items.length ? items.map(({r, fechaProg, st}) => {
+      const tipo = val(r, FCo.tipo) || 'Control';
+      const obs  = val(r, FCo.obs) || '';
+      return `<div class="card seg-card${st.mod ? ' '+st.mod : ''}" style="margin-bottom:8px">
+        <div class="card-header">
+          <div class="card-title">📅 ${escHtml(tipo)}</div>
+          ${fechaProg ? `<span class="date-chip">${fmtDate(fechaProg)}</span>` : ''}
+        </div>
+        ${obs ? `<div class="card-sub">${escHtml(obs.substring(0,60))}</div>` : ''}
+        <div class="card-meta"><span class="tag ${st.cls}">${st.label}</span></div>
+      </div>`;
+    }).join('') : `<div class="empty" style="padding:16px"><div class="empty-msg">Sin controles cumplidos registrados para este paciente.</div></div>`;
+    return;
+  }
+
   const todos = generarControlesEsperados(fnac).map(c => ({ ...c, rem: fmtRemaining(c.fecha, hoy) }));
   // Mostrar el último vencido/pasado (si lo hay) + todos los próximos, para no saturar con años ya cumplidos
   const pasados  = todos.filter(c => c.fecha < hoy);
