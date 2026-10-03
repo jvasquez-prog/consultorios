@@ -360,8 +360,50 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   .review-field-lbl,.review-lbl{color:#666}
   .review-field-val{color:#000}
   .print-header{display:block!important;font-size:11px;color:#666;margin-bottom:8px}
+  /* La app fija html/body a la altura de la pantalla con overflow:hidden
+     (comportamiento de app móvil) — sin anular eso, el navegador imprime
+     sólo lo que entra en la primera hoja y corta el resto del reporte. */
+  html,body{height:auto!important;overflow:visible!important}
+  /* Mientras se imprime un reporte (ver printReportArea) sólo sale el
+     área del reporte — ni el header de la app ni ninguna otra pantalla. */
+  body.printing-report{max-width:none}
+  body.printing-report > *:not(#report-print-area){display:none!important}
 }
+@page{margin:12mm 12mm 14mm}
 .print-header{display:none}
+
+/* Reporte clínico impreso (generarReportePdf) — el <thead> de .rpt-table se
+   repite solo en cada hoja del PDF (comportamiento estándar de impresión de
+   tablas), así el encabezado es idéntico en todas las páginas. */
+.rpt-table{width:100%;border-collapse:collapse;font-family:'IBM Plex Sans',sans-serif;color:#1B2B2E}
+.rpt-table > thead{display:table-header-group}
+.rpt-table > tbody > tr > td{padding:0}
+.rpt-table > thead > tr > td{padding:0 0 10px}
+.rpt-head{border-bottom:2px solid #2B6E73;padding-bottom:8px}
+.rpt-head-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.rpt-brand{font-family:'IBM Plex Serif',Georgia,serif;font-size:17px;font-weight:600;color:#1F5459}
+.rpt-brand-sub{font-size:10px;color:#5E7175;margin-top:1px}
+.rpt-doc{text-align:right;font-size:10px;color:#5E7175;line-height:1.4}
+.rpt-doc strong{display:block;font-size:13px;color:#1B2B2E;letter-spacing:.3px;text-transform:uppercase}
+.rpt-pac{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:7px;font-size:11px;color:#5E7175}
+.rpt-pac b{color:#1B2B2E;font-size:12px}
+.rpt-sec{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#3E7A8C;margin:6px 0 6px}
+.rpt-box{border:1px solid #D5DEDC;border-radius:4px;padding:10px 12px;margin-bottom:10px;break-inside:avoid;page-break-inside:avoid}
+.rpt-field{display:flex;gap:8px;font-size:12px;line-height:1.45;margin-bottom:3px}
+.rpt-field span:first-child{width:110px;flex-shrink:0;color:#5E7175}
+.rpt-inst-fecha{font-size:13px;font-weight:700;margin-bottom:6px}
+.rpt-inst-lbl{font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#5E7175;margin:8px 0 2px}
+.rpt-inst-txt{font-size:12px;line-height:1.5;white-space:pre-wrap}
+.rpt-cierre{break-inside:avoid;page-break-inside:avoid}
+.rpt-firma{margin:34px 0 0 auto;width:62%;text-align:center;break-inside:avoid;page-break-inside:avoid}
+.rpt-firma img{display:block;max-height:80px;max-width:100%;margin:0 auto 2px}
+.rpt-firma-espacio{height:64px}
+.rpt-firma-linea{border-top:1px solid #1B2B2E;margin-bottom:4px}
+.rpt-firma-nombre{font-size:13px;font-weight:700}
+.rpt-firma-det{font-size:11px;color:#5E7175;line-height:1.4}
+
+/* Pad de firma en "Mi Perfil" */
+.firma-pad{display:block;width:100%;height:140px;background:#fff;border:1px dashed var(--border2);border-radius:var(--radius-sm);touch-action:none;cursor:crosshair}
 </style>
 </head>
 <body>
@@ -707,7 +749,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
     <div id="historial-list"></div>
     <button class="btn-primary" id="pac-new-btn-save" onclick="savePac()">Guardar paciente</button>
     <button class="btn-danger" id="pac-new-btn-del" onclick="deletePac()" style="display:none">Eliminar paciente</button>
-    <button type="button" id="pac-new-btn-reporte" onclick="openReporteClinico()" style="display:none;width:100%;background:rgba(62,122,140,0.15);color:var(--teal);border:1px solid rgba(62,122,140,0.3);border-radius:var(--radius-sm);padding:11px;font-size:14px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;margin-top:6px">📄 Generar reporte clínico</button>
+    <button type="button" id="pac-new-btn-reporte" onclick="openReporteClinico(editingId)" style="display:none;width:100%;background:rgba(62,122,140,0.15);color:var(--teal);border:1px solid rgba(62,122,140,0.3);border-radius:var(--radius-sm);padding:11px;font-size:14px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;margin-top:6px">📄 Generar reporte clínico</button>
     <button class="btn-cancel" onclick="stopGuidedVoice();closeModal('modal-pac-new')">Cancelar</button>
   </div>
 </div>
@@ -718,7 +760,8 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
     <div class="modal-handle"></div>
     <div class="modal-title" id="pac-detail-title">Paciente</div>
     <div id="pac-detail-content"></div>
-    <div style="display:flex;gap:8px;margin-top:12px">
+    <button type="button" onclick="openReporteClinico(viewingPacId)" style="width:100%;background:rgba(62,122,140,0.15);color:var(--teal);border:1px solid rgba(62,122,140,0.3);border-radius:var(--radius-sm);padding:11px;font-size:14px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;margin-top:12px">📄 Generar reporte clínico</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn-primary" style="flex:1;margin-top:0" onclick="editCurrentPac()">✏️ Editar</button>
       <button class="btn-cancel" style="flex:1;margin-top:0" onclick="closeModal('modal-pac-detail')">Cerrar</button>
     </div>
@@ -761,6 +804,38 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
         <option value="Medico">Médico</option>
         <option value="Administrativo">Administrativo</option>
       </select>
+    </div>
+
+    <!-- Aval del médico al pie de los reportes clínicos (ver reporteFirmaHtml) -->
+    <div style="margin-top:4px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px">Firma para reportes</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 96px">
+          <label class="form-label">Tratamiento</label>
+          <select class="form-input" id="prof-titulo">
+            <option value="">—</option>
+            <option value="Dr.">Dr.</option>
+            <option value="Dra.">Dra.</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Matrícula</label>
+          <input class="form-input" id="prof-matricula" type="text" placeholder="Ej: M.N. 123456" autocomplete="off"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Especialidad</label>
+        <input class="form-input" id="prof-especialidad" type="text" placeholder="Ej: Médica pediatra" autocomplete="off"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Firma (dibujala con el dedo o subí una foto)</label>
+        <canvas id="firma-pad" class="firma-pad"></canvas>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button type="button" class="btn-cancel" style="flex:1;margin-top:0;padding:8px" onclick="firmaPadClear()">Borrar</button>
+          <label class="btn-cancel" style="flex:1;margin-top:0;padding:8px;text-align:center;cursor:pointer">Subir imagen<input type="file" accept="image/*" style="display:none" onchange="firmaPadUpload(this)"/></label>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Se guarda sólo en este dispositivo y se imprime al pie de cada reporte clínico.</div>
+      </div>
     </div>
     <button class="btn-primary" onclick="saveProfile()">Guardar perfil</button>
 
@@ -1467,6 +1542,9 @@ function openPerfilModal() {
   document.getElementById('prof-rol').value = userProfile.rol || 'Medico';
   const rolGroup = document.getElementById('prof-rol-group');
   if (rolGroup) rolGroup.style.display = '';
+  document.getElementById('prof-titulo').value = userProfile.titulo || '';
+  document.getElementById('prof-matricula').value = userProfile.matricula || '';
+  document.getElementById('prof-especialidad').value = userProfile.especialidad || '';
   // TOTP status
   const totpEl = document.getElementById('prof-totp-status');
   if (totpEl) {
@@ -1477,17 +1555,104 @@ function openPerfilModal() {
       : `<button onclick="openTotpSetup()" style="background:rgba(43,110,115,0.15);color:var(--blue2);border:1px solid rgba(43,110,115,0.25);border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:'IBM Plex Sans',sans-serif">🔐 Configurar autenticador 2FA</button>`;
   }
   document.getElementById('modal-perfil').classList.add('open');
+  // Recién con el modal visible el canvas tiene tamaño real para medir
+  firmaPadInit();
 }
 
 function saveProfile() {
   userProfile.nombre = document.getElementById('prof-nombre').value.trim();
   userProfile.apellido = document.getElementById('prof-apellido').value.trim();
   userProfile.rol = document.getElementById('prof-rol').value;
+  userProfile.titulo = document.getElementById('prof-titulo').value;
+  userProfile.matricula = document.getElementById('prof-matricula').value.trim();
+  userProfile.especialidad = document.getElementById('prof-especialidad').value.trim();
   try { localStorage.setItem('synapsis_profile', JSON.stringify(userProfile)); } catch(e){}
+  if (firmaPad.changed) {
+    try {
+      if (firmaPad.empty) localStorage.removeItem(FIRMA_KEY);
+      else localStorage.setItem(FIRMA_KEY, firmaPad.canvas.toDataURL('image/png'));
+    } catch(e) { showToast('⚠️ No se pudo guardar la firma en este dispositivo', 5000); }
+  }
   updateProfileUI();
   closeModal('modal-perfil');
   showToast('✓ Perfil guardado');
   applyRoleVisibility();
+}
+
+// ===== FIRMA PARA REPORTES =====
+// Imagen PNG (data URL) en su propia clave de localStorage, aparte de
+// synapsis_profile, para no cargar el perfil con ~decenas de KB en cada
+// lectura. Igual que el resto del perfil, es local al dispositivo.
+const FIRMA_KEY = 'synapsis_firma';
+const firmaPad = { canvas: null, ctx: null, drawing: false, changed: false, empty: true };
+
+function getFirmaDataUrl() {
+  try { return localStorage.getItem(FIRMA_KEY) || ''; } catch(e) { return ''; }
+}
+
+function firmaPadInit() {
+  const c = document.getElementById('firma-pad');
+  if (!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  c.width  = Math.round(c.clientWidth * dpr);
+  c.height = Math.round(c.clientHeight * dpr);
+  const ctx = c.getContext('2d');
+  ctx.lineWidth = 2.2 * dpr; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+  Object.assign(firmaPad, { canvas: c, ctx, drawing: false, changed: false, empty: true });
+  const saved = getFirmaDataUrl();
+  if (saved) firmaPadDrawImage(saved, false);
+  if (!c.dataset.bound) {
+    c.dataset.bound = '1';
+    const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+    c.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      c.setPointerCapture(e.pointerId);
+      firmaPad.drawing = true;
+      const [x, y] = pos(e);
+      firmaPad.ctx.beginPath(); firmaPad.ctx.moveTo(x, y);
+      firmaPad.ctx.lineTo(x + 0.1, y); firmaPad.ctx.stroke();
+      firmaPad.changed = true; firmaPad.empty = false;
+    });
+    c.addEventListener('pointermove', e => {
+      if (!firmaPad.drawing) return;
+      const [x, y] = pos(e);
+      firmaPad.ctx.lineTo(x, y); firmaPad.ctx.stroke();
+    });
+    const end = () => { firmaPad.drawing = false; };
+    c.addEventListener('pointerup', end);
+    c.addEventListener('pointercancel', end);
+  }
+}
+
+function firmaPadClear() {
+  if (!firmaPad.canvas) return;
+  firmaPad.ctx.clearRect(0, 0, firmaPad.canvas.width, firmaPad.canvas.height);
+  firmaPad.changed = true; firmaPad.empty = true;
+}
+
+// Dibuja una imagen centrada y escalada para entrar en el pad (preserva
+// proporción). markChanged=false al precargar la firma ya guardada.
+function firmaPadDrawImage(src, markChanged) {
+  const img = new Image();
+  img.onload = () => {
+    const c = firmaPad.canvas, ctx = firmaPad.ctx;
+    ctx.clearRect(0, 0, c.width, c.height);
+    const k = Math.min(c.width / img.width, c.height / img.height, 1);
+    const w = img.width * k, h = img.height * k;
+    ctx.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+    firmaPad.empty = false;
+    if (markChanged) firmaPad.changed = true;
+  };
+  img.src = src;
+}
+
+function firmaPadUpload(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !firmaPad.canvas) return;
+  const reader = new FileReader();
+  reader.onload = () => firmaPadDrawImage(reader.result, true);
+  reader.readAsDataURL(file);
 }
 
 function applyRoleVisibility() {
@@ -2424,41 +2589,101 @@ async function fetchAndShowHistorialReadonly(pacId) {
 }
 
 // ===== REPORTE CLÍNICO EN PDF =====
-// Reusa el mismo mecanismo que printRecord(): un contenedor .screen oculto
-// que se marca .print-target justo antes de window.print() (ver hoja
-// @media print, más arriba) — sin agregar ninguna dependencia nueva.
-function openReporteClinico() {
-  if (!historialPacRec) { showToast('No se pudo cargar el paciente'); return; }
-  syncHistFromDom();
-  // Sólo se ofrecen instancias ya guardadas en Airtable — una recién
-  // agregada con "+ Nuevo" y sin guardar todavía no tiene fecha "oficial".
-  const activos = historialInstances.filter(i => !i.deleted && i.atId);
+// Se arma en un contenedor .screen oculto (#report-print-area) que se
+// imprime con window.print() (ver printReportArea y la hoja @media print)
+// — sin dependencias nuevas; el PDF sale de "Guardar como PDF" del diálogo
+// de impresión. El contenido va en una <table> cuyo <thead> el navegador
+// repite en cada hoja: así el encabezado es idéntico en todas las páginas.
+let reportePacRec = null;     // paciente del reporte en curso
+let reporteConsultas = [];    // instancias de Consultas ya traídas de Airtable
+
+// Se puede abrir tanto desde la ficha (modal-pac-detail) como desde el
+// formulario de edición — en ambos casos se imprime lo guardado en
+// Airtable, no lo que esté sin guardar en el formulario.
+async function openReporteClinico(pacId) {
+  const rec = allPacientes.find(r => r.id === pacId) || historialPacRec;
+  if (!rec) { showToast('No se pudo cargar el paciente'); return; }
+  reportePacRec = rec;
+  reporteConsultas = [];
   const listEl = document.getElementById('reporte-instancias-list');
-  if (!activos.length) {
-    listEl.innerHTML = `<div style="font-size:12px;color:var(--text3)">Este paciente todavía no tiene instancias guardadas en el historial clínico. El reporte va a incluir sólo los datos generales.</div>`;
-  } else {
-    listEl.innerHTML = `
-      <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer">
-        <input type="radio" name="reporte-inst" value="todas" checked/>
-        <span style="font-size:13px;color:var(--text)">Todas las instancias juntas</span>
-      </label>
-      ${activos.map(i => `
-      <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;border-top:1px solid var(--border)">
-        <input type="radio" name="reporte-inst" value="${i.atId}"/>
-        <span style="font-size:13px;color:var(--text)">${escHtml(i.fecha ? fmtDate(i.fecha) : 'Sin fecha')}${i.diag ? ' — ' + escHtml((i.diag||'').substring(0,40)) : ''}</span>
-      </label>`).join('')}
-    `;
-  }
+  listEl.innerHTML = `<div class="loader" style="padding:8px 0"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div></div>`;
   document.getElementById('modal-reporte-instancias').classList.add('open');
+
+  const recs = await fetchConsultasByPatient(rec.id);
+  if (reportePacRec !== rec) return; // se abrió otro reporte mientras cargaba
+  reporteConsultas = recs;
+  const desdeEdicion = document.getElementById('modal-pac-new').classList.contains('open');
+  const avisoEdicion = desdeEdicion
+    ? `<div style="font-size:11px;color:var(--amber);margin-bottom:8px">El reporte usa lo guardado — si cambiaste algo en el formulario, guardalo antes de generar el PDF.</div>`
+    : '';
+  if (!recs.length) {
+    listEl.innerHTML = avisoEdicion + `<div style="font-size:12px;color:var(--text3)">Este paciente todavía no tiene instancias guardadas en el historial clínico. El reporte va a incluir sólo los datos generales.</div>`;
+    return;
+  }
+  listEl.innerHTML = avisoEdicion + `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer">
+      <input type="radio" name="reporte-inst" value="todas" checked/>
+      <span style="font-size:13px;color:var(--text)">Historial completo (${recs.length} instancia${recs.length !== 1 ? 's' : ''})</span>
+    </label>
+    ${recs.map(r => {
+      const fecha = r.fields[FC.fecha] ? fmtDate(r.fields[FC.fecha]) : 'Sin fecha';
+      const diag  = r.fields[FC.diag] || '';
+      return `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;border-top:1px solid var(--border)">
+      <input type="radio" name="reporte-inst" value="${r.id}"/>
+      <span style="font-size:13px;color:var(--text)">${escHtml(fecha)}${diag ? ' — ' + escHtml(diag.substring(0,40)) : ''}</span>
+    </label>`;
+    }).join('')}
+  `;
 }
 
-async function generarReportePdf() {
-  if (!historialPacRec) return;
+// Aval del médico al pie del reporte: nombre, especialidad/matrícula y la
+// firma configurados en "Mi Perfil". Sin datos cargados, deja el espacio
+// para firmar y aclarar a mano.
+function reporteFirmaHtml() {
+  const firma  = getFirmaDataUrl();
+  const nombre = [userProfile.titulo, userProfile.nombre, userProfile.apellido].filter(Boolean).join(' ');
+  const det    = [userProfile.especialidad, userProfile.matricula].filter(Boolean).join(' · ');
+  return `
+    <div class="rpt-firma">
+      ${firma ? `<img src="${firma}" alt="Firma"/>` : `<div class="rpt-firma-espacio"></div>`}
+      <div class="rpt-firma-linea"></div>
+      <div class="rpt-firma-nombre">${nombre ? escHtml(nombre) : 'Firma y aclaración'}</div>
+      ${det ? `<div class="rpt-firma-det">${escHtml(det)}</div>` : ''}
+    </div>`;
+}
+
+// Imprime #report-print-area aislado del resto de la app. Limpia recién en
+// afterprint: en algunos navegadores móviles window.print() no bloquea, y
+// quitar las clases con un timeout fijo podía vaciar el PDF a mitad de
+// camino. El título del documento es el nombre de archivo que propone
+// "Guardar como PDF".
+function printReportArea(titulo) {
+  const area = document.getElementById('report-print-area');
+  const prevTitle = document.title;
+  area.classList.add('print-target');
+  document.body.classList.add('printing-report');
+  if (titulo) document.title = titulo;
+  const cleanup = () => {
+    area.classList.remove('print-target');
+    document.body.classList.remove('printing-report');
+    document.title = prevTitle;
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  // Esperar a que carguen las imágenes (firma) antes de abrir el diálogo
+  const imgs = [...area.querySelectorAll('img')];
+  Promise.all(imgs.map(i => i.decode ? i.decode().catch(() => {}) : Promise.resolve()))
+    .then(() => window.print());
+}
+
+function generarReportePdf() {
+  const rec = reportePacRec;
+  if (!rec) return;
   const sel = document.querySelector('input[name="reporte-inst"]:checked');
   const choice = sel ? sel.value : 'todas';
   closeModal('modal-reporte-instancias');
 
-  const rec     = historialPacRec;
   const nombre  = rec.fields[FP.nombre] || 'Sin nombre';
   const fnac    = rec.fields[FP.fnac];
   const edad    = calcEdad(fnac);
@@ -2469,47 +2694,82 @@ async function generarReportePdf() {
   const dom     = rec.fields[FP.domicilio] || '';
   const tutor   = rec.fields[FP.tutor] || '';
   const tel     = rec.fields[FP.telTutor] || '';
-  const row = (lbl, v) => v ? `<div class="review-field"><span class="review-field-lbl">${lbl}</span><span class="review-field-val">${escHtml(String(v))}</span></div>` : '';
+  const legDiag = rec.fields[FP.diag] || '', legAntec = rec.fields[FP.antec] || '', legNotas = rec.fields[FP.notas] || '';
+  const hoyStr  = fmtDate(new Date().toISOString().slice(0,10));
 
-  let instRecs = [];
-  try { instRecs = await fetchConsultasByPatient(rec.id); } catch(_) {}
-  const seleccionadas = choice === 'todas' ? instRecs : instRecs.filter(r => r.id === choice);
+  const field = (lbl, v) => v ? `<div class="rpt-field"><span>${lbl}</span><span>${escHtml(String(v))}</span></div>` : '';
+  const txt   = (lbl, v) => v ? `<div class="rpt-inst-lbl">${lbl}</div><div class="rpt-inst-txt">${escHtml(v)}</div>` : '';
+  const filaTr = html => `<tr><td>${html}</td></tr>`;
 
-  const fldp = (lbl, v) => v ? `<div class="review-divider"></div><div class="review-lbl">${lbl}</div><div class="review-campo2">${escHtml(v)}</div>` : '';
-  const instHtml = seleccionadas.length ? seleccionadas.map(r => {
-    const fecha  = r.fields[FC.fecha] ? fmtDate(r.fields[FC.fecha]) : 'Sin fecha';
-    const diagI  = r.fields[FC.diag]  || '';
-    const antecI = r.fields[FC.antec] || '';
-    const notasI = r.fields[FC.obs]   || '';
-    return `<div class="review-card" style="margin-top:10px">
-      <div class="review-campo1" style="font-size:15px">${escHtml(fecha)}</div>
-      ${fldp('Diagnóstico Principal', diagI)}
-      ${fldp('Antecedentes', antecI)}
-      ${fldp('Notas Clínicas', notasI)}
+  const seleccionadas = choice === 'todas' ? reporteConsultas : reporteConsultas.filter(r => r.id === choice);
+
+  // Encabezado repetido en cada hoja: identificación del documento y del paciente
+  const headHtml = `
+    <div class="rpt-head">
+      <div class="rpt-head-top">
+        <div>
+          <div class="rpt-brand">PediConsult</div>
+          <div class="rpt-brand-sub">Consultorio pediátrico</div>
+        </div>
+        <div class="rpt-doc"><strong>Reporte clínico</strong>Emitido el ${escHtml(hoyStr)}</div>
+      </div>
+      <div class="rpt-pac">
+        <b>${escHtml(nombre)}</b>
+        ${dni ? `<span>${escHtml(dni)}</span>` : ''}
+        ${fnac ? `<span>Nac. ${escHtml(fmtDate(fnac))}${edadStr ? ' (' + escHtml(edadStr) + ')' : ''}</span>` : ''}
+        ${os ? `<span>${escHtml(os)}</span>` : ''}
+      </div>
     </div>`;
-  }).join('') : `<div style="font-size:12px;color:var(--text3);margin-top:10px">Sin instancias del historial para incluir.</div>`;
 
-  const area = document.getElementById('report-print-area');
-  area.innerHTML = `
-    <div class="print-header">Reporte clínico — generado el ${fmtDate(new Date().toISOString().slice(0,10))}</div>
-    <div class="review-card">
-      <div class="review-lbl">Paciente</div>
-      <div class="review-campo1">${escHtml(nombre)}</div>
-      <div class="review-divider"></div>
-      ${row('Fecha nac.', fnac ? fmtDate(fnac) : '')}
-      ${row('Edad', edadStr)}
-      ${row('Sexo', sexo)}
-      ${row('DNI', dni)}
-      ${row('Obra Social', os)}
-      ${row('Domicilio', dom)}
-      ${tutor || tel ? `<div class="review-divider"></div><div class="review-lbl">Tutor / Responsable</div>${row('Nombre', tutor)}${row('Teléfono', tel)}` : ''}
-    </div>
-    ${instHtml}
-  `;
+  const filas = [];
+  filas.push(`
+    <div class="rpt-sec">Datos del paciente</div>
+    <div class="rpt-box">
+      ${field('Fecha nac.', fnac ? fmtDate(fnac) : '')}
+      ${field('Edad', edadStr)}
+      ${field('Sexo', sexo)}
+      ${field('DNI', dni)}
+      ${field('Obra Social', os)}
+      ${field('Domicilio', dom)}
+      ${field('Tutor', tutor)}
+      ${field('Teléfono', tel)}
+    </div>`);
 
-  area.classList.add('print-target');
-  window.print();
-  setTimeout(() => area.classList.remove('print-target'), 1000);
+  // Datos clínicos de antes del historial que todavía no se migraron
+  if (legDiag || legAntec || legNotas) {
+    filas.push(`
+      <div class="rpt-sec">Datos clínicos previos al historial</div>
+      <div class="rpt-box">${txt('Diagnóstico', legDiag)}${txt('Antecedentes', legAntec)}${txt('Notas Clínicas', legNotas)}</div>`);
+  }
+
+  filas.push(`<div class="rpt-sec">Historial clínico${choice === 'todas' ? '' : ' — instancia seleccionada'}</div>`);
+  if (seleccionadas.length) {
+    seleccionadas.forEach(r => {
+      const fecha = r.fields[FC.fecha] ? fmtDate(r.fields[FC.fecha]) : 'Sin fecha';
+      filas.push(`
+        <div class="rpt-box">
+          <div class="rpt-inst-fecha">${escHtml(fecha)}</div>
+          ${txt('Diagnóstico Principal', r.fields[FC.diag] || '')}
+          ${txt('Antecedentes', r.fields[FC.antec] || '')}
+          ${txt('Notas Clínicas', r.fields[FC.obs] || '')}
+        </div>`);
+    });
+  } else {
+    filas.push(`<div style="font-size:12px;color:#5E7175;margin-bottom:10px">Sin instancias del historial para incluir.</div>`);
+  }
+
+  // La firma nunca queda sola en una hoja: va pegada al último bloque, y
+  // si no entran juntos en lo que queda de la página, pasan juntos a la
+  // siguiente (break-inside:avoid sobre el contenedor).
+  filas.push(`<div class="rpt-cierre">${filas.pop()}${reporteFirmaHtml()}</div>`);
+
+  document.getElementById('report-print-area').innerHTML = `
+    <table class="rpt-table">
+      <thead><tr><td>${headHtml}</td></tr></thead>
+      <tbody>${filas.map(filaTr).join('')}</tbody>
+    </table>`;
+
+  printReportArea(`Reporte clínico - ${nombre} - ${hoyStr}`);
 }
 
 // ===== REPORTE DE HISTORIAL DE VACUNACIÓN (por paciente) =====
@@ -2614,9 +2874,7 @@ async function generarReporteVacunacion(pacId) {
       ${rowsHtml}
     </div>
   `;
-  area.classList.add('print-target');
-  window.print();
-  setTimeout(() => area.classList.remove('print-target'), 1000);
+  printReportArea(`Reporte de vacunación - ${nombre}`);
 }
 
 function editCurrentPac() {
