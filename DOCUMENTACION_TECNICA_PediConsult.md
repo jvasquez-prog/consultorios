@@ -137,10 +137,10 @@ Cada paciente tiene una lista de **instancias** (consultas), guardadas como regi
 | Fecha | `FC.fecha` (Fecha de Atención) | Si queda vacía, al guardar se usa la fecha de hoy |
 | Diagnóstico Principal | `FC.diag` | Texto largo |
 | Antecedentes | `FC.antec` | Texto largo |
-| Notas Clínicas | `FC.obs` (Observaciones) | Texto largo |
+| Tratamiento | `FC.obs` (Observaciones) | Texto largo. Hasta el 2026-10-07 se llamaba "Notas Clínicas"; sólo cambió la etiqueta, los datos siguen en la misma columna |
 | Archivos | `FC.archivos` | Adjuntos subidos a Cloudinary, igual que los del paciente |
 
-`FC.trat` (Tratamiento) y `FC.medico` (Médico) están mapeados en el código pero la UI no los usa.
+`FC.trat` (columna "Tratamiento" de Airtable) y `FC.medico` (Médico) están mapeados en el código pero la UI no los usa: el campo "Tratamiento" de la app se guarda en `FC.obs`, no en `FC.trat`.
 
 **Dónde se edita**: en el formulario de **edición** de un paciente ya existente, sección "Historial clínico" (`renderHistorialList`). Cada instancia es una tarjeta expandible; "+ Nuevo" agrega una, y cada una se puede borrar. Un paciente **nuevo** todavía no tiene historial: hay que guardarlo primero, porque las instancias necesitan un registro de paciente al cual vincularse.
 

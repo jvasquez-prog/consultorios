@@ -1120,7 +1120,7 @@ const FC = {
   paciente: 'fldnSjrIrUrdm5izW',  // Paciente (link)
   diag:     'fldJJD0ot4apvzmFZ',  // Diagnóstico
   trat:     'fldi74Cp34vRTwfgn',  // Tratamiento
-  obs:      'fldeshdzNrv2D0KGk',  // Observaciones → usado como "Notas Clínicas"
+  obs:      'fldeshdzNrv2D0KGk',  // Observaciones → usado como "Tratamiento" (antes "Notas Clínicas")
   medico:   'fldMsSrco45MlwXXL',  // Médico
   antec:    'fldtuZwof4H98Mlvb',  // Antecedentes
   archivos: 'fldFpBrRKmDw1gNro'   // Archivos
@@ -1134,7 +1134,7 @@ const HIST_FIELDS = [
   { rKey:'fecha', fcKey:'fecha', label:'Fecha',              icon:'📅', type:'date' },
   { rKey:'diag',  fcKey:'diag',  label:'Diagnóstico Principal', icon:'🩺', type:'text', trim:true, longText:true, slowCapture:true },
   { rKey:'antec', fcKey:'antec', label:'Antecedentes',        icon:'📋', type:'text', trim:true, longText:true, slowCapture:true },
-  { rKey:'notas', fcKey:'obs',   label:'Notas Clínicas',      icon:'📝', type:'text', trim:true, longText:true, slowCapture:true },
+  { rKey:'notas', fcKey:'obs',   label:'Tratamiento',         icon:'📝', type:'text', trim:true, longText:true, slowCapture:true },
 ];
 
 // VACUNAS
@@ -2582,7 +2582,7 @@ async function fetchAndShowHistorialReadonly(pacId) {
       <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">${escHtml(fecha)}</div>
       ${fld('Diagnóstico Principal', diagI)}
       ${fld('Antecedentes', antecI)}
-      ${fld('Notas Clínicas', notasI)}
+      ${fld('Tratamiento', notasI)}
       ${files.length ? renderAttachments(files) : ''}
     </div>`;
   }).join('');
@@ -2751,7 +2751,7 @@ function generarReportePdf() {
           <div class="rpt-inst-fecha">${escHtml(fecha)}</div>
           ${txt('Diagnóstico Principal', r.fields[FC.diag] || '')}
           ${txt('Antecedentes', r.fields[FC.antec] || '')}
-          ${txt('Notas Clínicas', r.fields[FC.obs] || '')}
+          ${txt('Tratamiento', r.fields[FC.obs] || '')}
         </div>`);
     });
   } else {
