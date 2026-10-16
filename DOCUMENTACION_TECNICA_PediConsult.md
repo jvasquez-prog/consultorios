@@ -1,6 +1,6 @@
 # PediConsult — Documentación funcional-técnica
 
-**Última actualización:** 2026-10-03 (verificado contra el commit `9527a0a` del 2026-08-02, más los cambios sin commitear: `netlify/functions/` y el reporte clínico con varias páginas, encabezado repetido y firma)
+**Última actualización:** 2026-10-16 (verificado contra el commit `3c709be` del 2026-10-07, más el visor de reportes con PDF generado en el dispositivo — sección 6)
 **Alcance:** describe el estado real del código en `index.html`, verificado línea por línea contra el archivo — no el estado deseado ni el de versiones anteriores. Donde el código y los textos de ayuda embebidos no coinciden, este documento sigue al código.
 
 ---
@@ -17,6 +17,7 @@ Una PWA (Progressive Web App) de un solo archivo (`index.html`, ~7200 líneas), 
 - **Persistencia de datos**: Airtable (API REST directa desde el cliente).
 - **Archivos adjuntos**: Cloudinary (unsigned upload).
 - **Autenticación**: local al dispositivo (PIN + 2FA opcional), sin servidor de auth.
+- **Generación de PDF**: jsPDF 2.5.1, incluido en el repo (`vendor/jspdf.umd.min.js`, no desde un CDN) y cargado sólo al abrir un reporte — sección 6.
 - **Offline**: Service Worker (`sw.js`) con estrategia network-first, más algo de `localStorage` como caché manual (parcial, ver sección 8).
 - **Tareas programadas**: una Netlify Scheduled Function (`netlify/functions/enviar-recordatorios.mjs`) que envía recordatorios de vacunas/controles por email vía Resend — sección 11.
 - **Despliegue**: sitio estático, configurado tanto para Netlify (`netlify.toml`) como Vercel (`vercel.json`) — ambos hacen rewrite de cualquier ruta a `index.html` (comportamiento de SPA) y agregan headers de seguridad básicos (`X-Content-Type-Options`, `X-Frame-Options`).
@@ -150,10 +151,17 @@ Cada paciente tiene una lista de **instancias** (consultas), guardadas como regi
 
 **Migración de datos viejos**: si un paciente no tiene ninguna instancia pero sí tiene cargados los campos viejos (`FP.diag`/`FP.antec`/`FP.notas`), al abrirlo se precargan como primera instancia sin pedir confirmación. Recién al tocar "Guardar paciente", y sólo si esa instancia se guarda bien, se vacían los campos viejos. Hasta ese momento no se pierde ni se duplica nada.
 
-**Reporte clínico en PDF** (`openReporteClinico(pacId)` → `generarReportePdf`): se abre desde la ficha de detalle o desde el formulario de edición. El usuario elige "Historial completo" o una instancia puntual. Siempre usa lo guardado en Airtable (si se abre desde el formulario, avisa que hay que guardar antes los cambios).
+**Reporte clínico** (`openReporteClinico(pacId)` → `generarReportePdf`): se abre desde la ficha de detalle o desde el formulario de edición. El usuario elige "Historial completo" o una instancia puntual y toca "Ver reporte". Siempre usa lo guardado en Airtable (si se abre desde el formulario, avisa que hay que guardar antes los cambios).
 - **Contenido**: datos del paciente, datos clínicos viejos todavía sin migrar (si los hay), las instancias elegidas y, al final, el **aval del médico**: firma, nombre con tratamiento (Dr./Dra.), especialidad y matrícula, tomados de "Mi Perfil" (sección 8). Sin datos cargados, deja una línea de "Firma y aclaración" para firmar a mano. La firma va siempre pegada al último bloque, para que nunca quede sola en una hoja.
-- **Varias páginas con encabezado repetido**: el contenido se arma en una `<table>` cuyo `<thead>` (marca, "Reporte clínico", fecha de emisión y nombre/DNI/nacimiento/obra social del paciente) el navegador repite en cada hoja. Cada instancia evita partirse entre páginas cuando entra entera.
-- **Impresión**: no usa librerías. `printReportArea()` marca `#report-print-area` y agrega `body.printing-report`, de modo que sólo se imprime el reporte, y llama a `window.print()`. El PDF sale de "Guardar como PDF" del diálogo, con el nombre de archivo propuesto `Reporte clínico - <paciente> - <fecha>`. La limpieza se hace en `afterprint`, porque en algunos móviles `print()` no bloquea.
+- **Una sola fuente de datos**: `buildReporteClinicoData()` arma los datos una vez; de ahí salen la vista previa (`renderReporteClinicoHtml`) y el PDF (`construirPdfReporteClinico`), así los dos no pueden diferir.
+
+**Visor de reportes y PDF** (`openReportViewer`, desde 2026-10-16; lo usan el reporte clínico y el de vacunación). Reemplazó al flujo anterior basado sólo en `window.print()`, que **en el iPhone con la app instalada no abría nada**, y en Android obligaba a pasar por el diálogo de impresión.
+- **Vista previa**: pantalla completa (`#report-viewer`, por encima de los modales) con el reporte en HTML legible en el celular, y "‹ Volver" para cerrarla (también con Escape en la computadora).
+- **PDF**: mientras se ve la vista previa, se arma el PDF en el dispositivo con jsPDF (`loadJsPdf()` carga `/vendor/jspdf.umd.min.js` la primera vez, y `sw.js` lo precachea). Es texto real (se puede buscar y copiar), en A4, con encabezado (marca, tipo de reporte, fecha y datos del paciente) y "Página N de M" en todas las hojas. Cada instancia pasa entera a la hoja siguiente si no entra en lo que queda; si es más larga que una hoja, se corta y la caja se dibuja en dos tramos. Los datos no salen del dispositivo.
+- **Fuentes**: jsPDF usa Helvetica, que sólo cubre Latin-1. Los acentos y la ñ salen bien; `pdfTxt()` cambia comillas tipográficas y guiones largos por sus equivalentes simples y quita los emojis.
+- **Botones** (según el dispositivo): **Compartir PDF** (`navigator.share` con el archivo: WhatsApp, mail, Drive y, en iOS, "Guardar en Archivos" e "Imprimir"). Sólo aparece si el navegador puede compartir archivos. El PDF se arma antes de tocar el botón porque `share()` tiene que llamarse dentro del gesto del usuario. **Descargar PDF** (enlace a un blob; se oculta en el iPhone con la app instalada, donde abriría un visor sin forma de volver). **Imprimir** (sólo en computadoras: copia la vista previa a `#report-print-area` y llama a `printReportArea()` → `window.print()`, con el `<thead>` repetido en cada hoja).
+- Si jsPDF no se puede cargar (sin conexión y sin caché), la vista previa se muestra igual y los botones de PDF quedan deshabilitados con un aviso.
+- Nombre de archivo: `Reporte clínico - <paciente> - <fecha>.pdf` / `Reporte de vacunación - <paciente> - <fecha>.pdf`.
 - **Arreglo de una sola hoja (2026-10-03)**: la app fija `html,body{height:100%;overflow:hidden}`, y antes la hoja `@media print` no lo anulaba, así que el PDF cortaba todo lo que no entraba en la primera página. Afectaba también al reporte de vacunación.
 
 ## 7. Vacunas, Controles y Calendario
@@ -177,7 +185,7 @@ Las ventanas se calculan con meses y años de calendario (`dateOffset`), no con 
   - **Menor de 15**: la lista **se calcula** a partir de la fecha de nacimiento y del esquema pediátrico fijo `PEDIATRIC_VACUNAS_SCHEDULE` (hasta los 11 años), con `computePediatricVacSchedule`. Muestra las vacunas que caen en 2026 más las de años anteriores que ya están atrasadas, cada una con "Faltan N días/meses", "Hoy" o "Atrasada N días". **No lee lo cargado en Airtable**: una vacuna aplicada y registrada igual figura en este cálculo.
   - **Mayor de 15**: muestra lo cargado en Airtable para ese paciente, con la clasificación de la sección 7.1.
   - Sin fecha de nacimiento: muestra un aviso.
-- **Botón "Reporte de vacunación"** (`generarReporteVacunacion`): genera un PDF (vía `printReportArea()`, igual que el reporte clínico, así que también imprime todas las páginas) con **exactamente lo mismo que la vista del paciente**. Para menores reutiliza `computePediatricVacSchedule`, así reporte y pantalla no pueden diferir. Para mayores de 15 (o sin fecha de nacimiento) usa los registros de Airtable.
+- **Botón "Reporte de vacunación"** (`generarReporteVacunacion`): abre el visor de reportes (sección 6) con vista previa y PDF (tabla vacuna / estado / fecha, con la cabecera repetida en cada hoja y el resumen por estado arriba). Muestra **exactamente lo mismo que la vista del paciente** (`buildReporteVacunacionData`). Para menores reutiliza `computePediatricVacSchedule`, así reporte y pantalla no pueden diferir. Para mayores de 15 (o sin fecha de nacimiento) usa los registros de Airtable.
 - **Lista general "Vacunas pendientes"** (`loadVacunas`): todos los registros de la tabla VACUNAS de todos los pacientes, clasificados según la sección 7.1.
 
 ### 7.3 Pantalla Controles
@@ -273,7 +281,7 @@ Herramienta manual (no corre automáticamente salvo la validación al crear, sec
 
 ## 11. Recordatorios automáticos por email
 
-**Estado: implementado pero todavía sin commitear ni desplegar** (carpeta `netlify/functions/` y bloque `[functions]` de `netlify.toml`, a 2026-10-03).
+**Estado: commiteado (`ef3a061`) pero todavía sin desplegar** (al 2026-10-16 falta el campo de VACUNAS, ver al final de esta sección).
 
 Netlify Scheduled Function `netlify/functions/enviar-recordatorios.mjs`, programada `0 12 * * *` (todos los días a las 12:00 UTC = 09:00 hora argentina):
 
@@ -310,9 +318,9 @@ Confirmado por doble verificación (ausencia de elemento DOM destino y/o ausenci
 
 ## 13. Despliegue
 
-- **Netlify** (`netlify.toml`) y **Vercel** (`vercel.json`): configuraciones equivalentes, sin build command (`publish='.'`), rewrite de cualquier ruta a `/index.html`, headers de seguridad básicos. Netlify además sirve `sw.js` con `Cache-Control: no-cache` y, con el cambio pendiente, declara `netlify/functions` como carpeta de funciones. **Los recordatorios por email sólo funcionan en Netlify**: Vercel no tiene equivalente configurado.
+- **Netlify** (`netlify.toml`) y **Vercel** (`vercel.json`): configuraciones equivalentes, sin build command (`publish='.'`), rewrite de cualquier ruta a `/index.html`, headers de seguridad básicos. Netlify además sirve `sw.js` con `Cache-Control: no-cache` y declara `netlify/functions` como carpeta de funciones. **Los recordatorios por email sólo funcionan en Netlify**: Vercel no tiene equivalente configurado.
 - **`manifest.json`**: PWA `standalone`, `lang:'es'`, iconos 192/512 maskable, categorías `medical`/`health`, tema claro (`theme_color #FFFFFF`, `background_color #F2F5F3`).
-- **`sw.js`**: cache versionado (`pediconsultorios-v3`), estrategia network-first, precarga mínima (`/`, `/index.html`, `/manifest.json`).
+- **`sw.js`**: cache versionado (`pediconsultorios-v4`), estrategia network-first, precarga mínima (`/`, `/index.html`, `/manifest.json`, `/vendor/jspdf.umd.min.js`).
 - Instalación en celular: Android (Chrome → "Agregar a pantalla de inicio"), iPhone (Safari → Compartir → "Agregar a pantalla de inicio").
 
 ## 14. Resumen de riesgos y deuda técnica

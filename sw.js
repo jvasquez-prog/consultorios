@@ -1,5 +1,6 @@
-const CACHE = 'pediconsultorios-v3';
-const STATIC = ['/', '/index.html', '/manifest.json'];
+const CACHE = 'pediconsultorios-v4';
+// jsPDF se precachea para poder generar los PDF de reportes sin conexión
+const STATIC = ['/', '/index.html', '/manifest.json', '/vendor/jspdf.umd.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));

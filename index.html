@@ -349,7 +349,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
   #pin-overlay,#offline-bar{display:none!important}
   .app{height:auto;overflow:visible}
-  .header .badge,.nav,.fab,.toast,.modal-overlay,.filter-panel,.card-actions,.review-nav,.btn-edit,.btn-del{display:none!important}
+  .header .badge,.nav,.fab,.toast,.modal-overlay,.rv-overlay,.filter-panel,.card-actions,.review-nav,.btn-edit,.btn-del{display:none!important}
   .content{overflow:visible;height:auto}
   .screen{display:none!important}
   .screen.print-target{display:block!important}
@@ -372,7 +372,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 @page{margin:12mm 12mm 14mm}
 .print-header{display:none}
 
-/* Reporte clínico impreso (generarReportePdf) — el <thead> de .rpt-table se
+/* Reporte clínico (renderReporteClinicoHtml, en el visor y al imprimir) — el <thead> de .rpt-table se
    repite solo en cada hoja del PDF (comportamiento estándar de impresión de
    tablas), así el encabezado es idéntico en todas las páginas. */
 .rpt-table{width:100%;border-collapse:collapse;font-family:'IBM Plex Sans',sans-serif;color:#1B2B2E}
@@ -401,6 +401,22 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .rpt-firma-linea{border-top:1px solid #1B2B2E;margin-bottom:4px}
 .rpt-firma-nombre{font-size:13px;font-weight:700}
 .rpt-firma-det{font-size:11px;color:#5E7175;line-height:1.4}
+
+/* Visor de reportes (openReportViewer) — pantalla completa por encima de
+   los modales; el "papel" blanco reutiliza los estilos .rpt-* del reporte. */
+.rv-overlay{position:fixed;inset:0;z-index:400;background:var(--bg3);display:none;flex-direction:column}
+.rv-overlay.open{display:flex}
+.rv-bar{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+.rv-close{background:none;border:none;font-size:15px;color:var(--teal);font-family:'IBM Plex Sans',sans-serif;font-weight:500;padding:6px 4px;cursor:pointer;flex-shrink:0}
+.rv-title{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 10px}
+.rv-paper{background:#fff;max-width:760px;margin:0 auto;padding:18px 16px 24px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+.rv-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px calc(10px + var(--safe-bottom));background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+.rv-btn{flex:1 1 0;min-width:120px;padding:12px;border-radius:var(--radius-sm);border:1px solid rgba(62,122,140,0.3);background:rgba(62,122,140,0.12);color:var(--teal);font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
+.rv-btn.rv-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.rv-btn:disabled{opacity:.5;cursor:default}
+.rv-estado{flex-basis:100%;font-size:11px;color:var(--text3);text-align:center}
+.rv-estado:empty{display:none}
 
 /* Pad de firma en "Mi Perfil" */
 .firma-pad{display:block;width:100%;height:140px;background:#fff;border:1px dashed var(--border2);border-radius:var(--radius-sm);touch-action:none;cursor:crosshair}
@@ -775,13 +791,28 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
     <div class="modal-title">Generar reporte clínico</div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:10px">La ficha completa del paciente siempre se incluye. Elegí qué parte del historial clínico va en el reporte.</div>
     <div id="reporte-instancias-list" style="margin-bottom:14px"></div>
-    <button class="btn-primary" onclick="generarReportePdf()">📄 Generar PDF</button>
+    <button class="btn-primary" onclick="generarReportePdf()">📄 Ver reporte</button>
     <button class="btn-cancel" onclick="closeModal('modal-reporte-instancias')">Cancelar</button>
   </div>
 </div>
 
 <!-- Área oculta usada sólo para armar el PDF del reporte clínico (ver printRecord/@media print) -->
 <div id="report-print-area" class="screen" style="display:none"></div>
+
+<!-- VISOR DE REPORTES (ver openReportViewer): vista previa + Compartir/Descargar PDF/Imprimir -->
+<div class="rv-overlay" id="report-viewer" role="dialog" aria-modal="true" aria-labelledby="rv-title">
+  <div class="rv-bar">
+    <button type="button" class="rv-close" onclick="closeReportViewer()">‹ Volver</button>
+    <div class="rv-title" id="rv-title"></div>
+  </div>
+  <div class="rv-scroll" id="rv-scroll"><div class="rv-paper" id="rv-paper"></div></div>
+  <div class="rv-actions">
+    <button type="button" class="rv-btn rv-primary" id="rv-share" onclick="rvCompartir()">Compartir PDF</button>
+    <button type="button" class="rv-btn" id="rv-download" onclick="rvDescargar()">Descargar PDF</button>
+    <button type="button" class="rv-btn" id="rv-print" onclick="rvImprimir()">Imprimir</button>
+    <div class="rv-estado" id="rv-estado"></div>
+  </div>
+</div>
 
 <!-- MODAL PERFIL -->
 <div class="modal-overlay" id="modal-perfil" onclick="closeModalOut(event,'modal-perfil')">
@@ -2588,12 +2619,11 @@ async function fetchAndShowHistorialReadonly(pacId) {
   }).join('');
 }
 
-// ===== REPORTE CLÍNICO EN PDF =====
-// Se arma en un contenedor .screen oculto (#report-print-area) que se
-// imprime con window.print() (ver printReportArea y la hoja @media print)
-// — sin dependencias nuevas; el PDF sale de "Guardar como PDF" del diálogo
-// de impresión. El contenido va en una <table> cuyo <thead> el navegador
-// repite en cada hoja: así el encabezado es idéntico en todas las páginas.
+// ===== REPORTE CLÍNICO =====
+// Se muestra en el visor de reportes (openReportViewer), que además arma el
+// PDF en el dispositivo con jsPDF. En computadoras también se puede
+// imprimir: el HTML va en una <table> cuyo <thead> el navegador repite en
+// cada hoja, así el encabezado es idéntico en todas las páginas.
 let reportePacRec = null;     // paciente del reporte en curso
 let reporteConsultas = [];    // instancias de Consultas ya traídas de Airtable
 
@@ -2640,10 +2670,15 @@ async function openReporteClinico(pacId) {
 // Aval del médico al pie del reporte: nombre, especialidad/matrícula y la
 // firma configurados en "Mi Perfil". Sin datos cargados, deja el espacio
 // para firmar y aclarar a mano.
-function reporteFirmaHtml() {
-  const firma  = getFirmaDataUrl();
-  const nombre = [userProfile.titulo, userProfile.nombre, userProfile.apellido].filter(Boolean).join(' ');
-  const det    = [userProfile.especialidad, userProfile.matricula].filter(Boolean).join(' · ');
+function reporteFirmaData() {
+  return {
+    dataUrl: getFirmaDataUrl(),
+    nombre:  [userProfile.titulo, userProfile.nombre, userProfile.apellido].filter(Boolean).join(' '),
+    det:     [userProfile.especialidad, userProfile.matricula].filter(Boolean).join(' · '),
+  };
+}
+
+function reporteFirmaHtml({ dataUrl: firma, nombre, det }) {
   return `
     <div class="rpt-firma">
       ${firma ? `<img src="${firma}" alt="Firma"/>` : `<div class="rpt-firma-espacio"></div>`}
@@ -2677,31 +2712,406 @@ function printReportArea(titulo) {
     .then(() => window.print());
 }
 
-function generarReportePdf() {
-  const rec = reportePacRec;
-  if (!rec) return;
-  const sel = document.querySelector('input[name="reporte-inst"]:checked');
-  const choice = sel ? sel.value : 'todas';
-  closeModal('modal-reporte-instancias');
+// ===== VISOR DE REPORTES + PDF GENERADO EN EL DISPOSITIVO =====
+// Los reportes (clínico y de vacunación) se muestran primero en un visor a
+// pantalla completa dentro de la app y, en paralelo, se arma el PDF con
+// jsPDF (vendor/jspdf.umd.min.js, servido por la propia app y precacheado
+// por sw.js — sin CDN, así funciona offline y los datos no salen del
+// dispositivo). Antes se dependía de window.print(), que en el iPhone con
+// la app instalada (modo standalone) no abre nada.
+// - Compartir: menú nativo del sistema (WhatsApp, mail, Drive, "Guardar en
+//   Archivos", "Imprimir" en iOS). El PDF se arma ANTES de que el usuario
+//   toque el botón: navigator.share() exige estar dentro del gesto, y en
+//   iOS un await de varios segundos lo invalida.
+// - Descargar: enlace <a download> a un blob. Se oculta en el iPhone con la
+//   app instalada, donde abre un visor sin botón para volver.
+// - Imprimir: sólo en computadoras (puntero fino); usa printReportArea().
+const JSPDF_SRC = '/vendor/jspdf.umd.min.js';
+let jsPdfPromise = null;
 
-  const nombre  = rec.fields[FP.nombre] || 'Sin nombre';
-  const fnac    = rec.fields[FP.fnac];
+function loadJsPdf() {
+  if (window.jspdf) return Promise.resolve(window.jspdf.jsPDF);
+  if (!jsPdfPromise) {
+    jsPdfPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = JSPDF_SRC;
+      s.onload  = () => window.jspdf ? resolve(window.jspdf.jsPDF) : reject(new Error('jsPDF no disponible'));
+      s.onerror = () => { jsPdfPromise = null; s.remove(); reject(new Error('No se pudo cargar el generador de PDF')); };
+      document.head.appendChild(s);
+    });
+  }
+  return jsPdfPromise;
+}
+
+const reportViewer = { blob: null, fileName: '', titulo: '', token: 0 };
+
+function pdfFileName(base) {
+  return base.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() + '.pdf';
+}
+
+function openReportViewer({ titulo, html, fileName, construirPdf }) {
+  const token = ++reportViewer.token;
+  reportViewer.blob = null;
+  reportViewer.fileName = fileName;
+  reportViewer.titulo = titulo;
+  document.getElementById('rv-title').textContent = titulo;
+  document.getElementById('rv-paper').innerHTML = html;
+  document.getElementById('rv-scroll').scrollTop = 0;
+
+  let puedeCompartir = false;
+  try {
+    puedeCompartir = !!(navigator.canShare && navigator.canShare({ files: [new File([''], 'x.pdf', { type: 'application/pdf' })] }));
+  } catch (_) {}
+  const iosInstalada = window.navigator.standalone === true;
+  const computadora  = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+  document.getElementById('rv-share').style.display    = puedeCompartir ? '' : 'none';
+  document.getElementById('rv-download').style.display = (iosInstalada && puedeCompartir) ? 'none' : '';
+  document.getElementById('rv-print').style.display    = computadora ? '' : 'none';
+  rvSetEstado('cargando');
+  document.getElementById('report-viewer').classList.add('open');
+
+  loadJsPdf()
+    .then(jsPDF => construirPdf(jsPDF))
+    .then(doc => {
+      if (token !== reportViewer.token) return; // se cerró o se abrió otro reporte
+      reportViewer.blob = doc.output('blob');
+      rvSetEstado('listo');
+    })
+    .catch(err => {
+      if (token !== reportViewer.token) return;
+      console.error('Error al generar el PDF', err);
+      rvSetEstado('error');
+    });
+}
+
+function rvSetEstado(estado) {
+  const listo = estado === 'listo';
+  document.getElementById('rv-share').disabled = !listo;
+  document.getElementById('rv-download').disabled = !listo;
+  document.getElementById('rv-estado').textContent =
+    estado === 'cargando' ? 'Preparando PDF…' :
+    estado === 'error'    ? 'No se pudo generar el PDF (¿sin conexión la primera vez?). El reporte se puede ver igual acá.' : '';
+}
+
+function closeReportViewer() {
+  reportViewer.token++;
+  reportViewer.blob = null;
+  document.getElementById('report-viewer').classList.remove('open');
+}
+
+function rvCompartir() {
+  if (!reportViewer.blob) return;
+  const file = new File([reportViewer.blob], reportViewer.fileName, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: reportViewer.titulo }).catch(err => {
+      if (err && err.name === 'AbortError') return; // el usuario cerró el menú
+      console.error('Error al compartir', err);
+      rvDescargar();
+    });
+  } else {
+    rvDescargar();
+  }
+}
+
+function rvDescargar() {
+  if (!reportViewer.blob) return;
+  const url = URL.createObjectURL(reportViewer.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = reportViewer.fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function rvImprimir() {
+  document.getElementById('report-print-area').innerHTML = document.getElementById('rv-paper').innerHTML;
+  printReportArea(reportViewer.fileName.replace(/\.pdf$/, ''));
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('report-viewer').classList.contains('open')) closeReportViewer();
+});
+
+// --- Armado del PDF (jsPDF, unidades en mm, A4) ---
+const PDF_COL = {
+  texto: [27,43,46], gris: [94,113,117], marca: [31,84,89], linea: [43,110,115],
+  sec: [62,122,140], borde: [213,222,220],
+};
+// Colores de los tags de estado (.tag-red/.tag-amber/.tag-green): texto y
+// fondo al 15% sobre blanco, igual que en pantalla.
+const PDF_TAG = {
+  'tag-red':   { txt: [166,67,59], bg: [242,227,226] },
+  'tag-amber': { txt: [169,97,30], bg: [242,231,221] },
+  'tag-green': { txt: [62,122,87], bg: [226,235,230] },
+};
+
+// Las fuentes estándar de jsPDF (Helvetica) sólo cubren Latin-1: los
+// acentos y la ñ salen bien, pero comillas tipográficas, guiones largos o
+// emojis saldrían como basura — se reemplazan o se quitan.
+function pdfTxt(s) {
+  return String(s ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ')
+    .replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-').replace(/…/g, '...').replace(/•/g, '-')
+    .replace(/[^\n\x20-\x7E -ÿ]/g, '');
+}
+
+// Escritor secuencial: lleva la posición vertical (y), corta de página
+// cuando hace falta y vuelve a dibujar el encabezado en cada hoja nueva.
+// Las cajas (.rpt-box) que quedan partidas entre dos hojas se dibujan como
+// dos segmentos, uno por hoja.
+function crearPdfWriter(jsPDF, dibujarEncabezado) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, ML = 14, MR = 14, MT = 12, MB = 18, PAD = 3.5;
+  const ancho = W - ML - MR;
+  const lineH = size => size * 0.3528 * 1.4;
+  let caja = null;
+  const w = { doc, W, H, ML, MT, ancho, x: ML, anchoCont: ancho, y: MT, yInicio: MT, lineH, onNuevaPagina: null };
+
+  w.font = (size, style = 'normal', color = PDF_COL.texto) => {
+    doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...color);
+  };
+  w.lineas = (texto, size, style, anchoMax) => {
+    doc.setFont('helvetica', style); doc.setFontSize(size);
+    return doc.splitTextToSize(pdfTxt(texto), anchoMax);
+  };
+  const encabezado = () => {
+    w.y = MT;
+    dibujarEncabezado(w);
+    w.yInicio = w.y;
+  };
+  const trazarCaja = yFin => {
+    doc.setDrawColor(...PDF_COL.borde); doc.setLineWidth(0.3);
+    doc.roundedRect(ML, caja.y0, ancho, yFin - caja.y0, 1.2, 1.2, 'S');
+  };
+  w.nuevaPagina = () => {
+    if (caja) trazarCaja(Math.min(w.y + 1, H - MB + 2));
+    doc.addPage();
+    encabezado();
+    if (caja) { caja.y0 = w.y; w.y += PAD; }
+    if (w.onNuevaPagina) w.onNuevaPagina();
+  };
+  w.asegurar = h => { if (w.y + h > H - MB) w.nuevaPagina(); };
+
+  w.seccion = (titulo, reservar = 16) => {
+    w.asegurar(lineH(8) + reservar);
+    w.y += 1;
+    w.font(8, 'bold', PDF_COL.sec);
+    doc.text(pdfTxt(titulo).toUpperCase(), w.x, w.y, { baseline: 'top' });
+    w.y += lineH(8) + 1.5;
+  };
+  w.titulo = texto => {
+    w.asegurar(lineH(11));
+    w.font(11, 'bold');
+    doc.text(pdfTxt(texto), w.x, w.y, { baseline: 'top' });
+    w.y += lineH(11) + 0.5;
+  };
+  w.parrafo = (texto, { size = 10, style = 'normal', color = PDF_COL.texto } = {}) => {
+    const lh = lineH(size);
+    w.lineas(texto, size, style, w.anchoCont).forEach(l => {
+      w.asegurar(lh);
+      w.font(size, style, color);
+      doc.text(l, w.x, w.y, { baseline: 'top' });
+      w.y += lh;
+    });
+  };
+  // Fila "etiqueta: valor" con la etiqueta en una columna fija
+  w.campo = (lbl, valor) => {
+    const anchoLbl = 30, lh = lineH(10);
+    w.lineas(valor, 10, 'normal', w.anchoCont - anchoLbl).forEach((l, i) => {
+      w.asegurar(lh);
+      if (i === 0) { w.font(10, 'normal', PDF_COL.gris); doc.text(pdfTxt(lbl), w.x, w.y, { baseline: 'top' }); }
+      w.font(10);
+      doc.text(l, w.x + anchoLbl, w.y, { baseline: 'top' });
+      w.y += lh;
+    });
+    w.y += 0.6;
+  };
+  // Etiqueta chica en mayúsculas + texto largo (diagnóstico, tratamiento...)
+  w.bloqueTexto = (lbl, texto) => {
+    w.asegurar(lineH(7.5) + 1.5 + lineH(10) * 2);
+    w.y += 1.5;
+    w.font(7.5, 'bold', PDF_COL.gris);
+    doc.text(pdfTxt(lbl).toUpperCase(), w.x, w.y, { baseline: 'top' });
+    w.y += lineH(7.5) + 0.3;
+    w.parrafo(texto);
+  };
+  // Altura aproximada de una caja de bloqueTexto (para no partirla si entra
+  // entera en una hoja nueva)
+  w.alturaBloques = (pares, conTitulo = false) =>
+    PAD * 2 + (conTitulo ? lineH(11) + 0.5 : 0) +
+    pares.reduce((h, [, t]) => h + 1.5 + lineH(7.5) + 0.3 + w.lineas(t, 10, 'normal', ancho - 8).length * lineH(10), 0);
+
+  w.abrirCaja = (alturaEstimada = 0) => {
+    const util = H - MB - w.yInicio;
+    if (alturaEstimada && w.y + alturaEstimada > H - MB && alturaEstimada <= util) w.nuevaPagina();
+    else w.asegurar(PAD * 2 + lineH(10) * 2);
+    caja = { y0: w.y };
+    w.y += PAD;
+    w.x = ML + 4;
+    w.anchoCont = ancho - 8;
+  };
+  w.cerrarCaja = (gap = 4) => {
+    w.y += PAD - 1;
+    trazarCaja(w.y);
+    caja = null;
+    w.x = ML;
+    w.anchoCont = ancho;
+    w.y += gap;
+  };
+
+  // Etiqueta redondeada tipo .tag; devuelve el ancho ocupado
+  w.tag = (texto, cls, x, y, size = 8.5) => {
+    const c = PDF_TAG[cls] || { txt: PDF_COL.gris, bg: [238,241,240] };
+    const t = pdfTxt(texto);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(size);
+    const tw = doc.getTextWidth(t) + 5, th = lineH(size) + 1.4;
+    doc.setFillColor(...c.bg);
+    doc.roundedRect(x, y, tw, th, th / 2, th / 2, 'F');
+    doc.setTextColor(...c.txt);
+    doc.text(t, x + 2.5, y + 0.7, { baseline: 'top' });
+    return tw;
+  };
+
+  // Pie con "Página N de M" en todas las hojas — se agrega al final, cuando
+  // ya se sabe el total.
+  w.pie = texto => {
+    const n = doc.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(...PDF_COL.borde); doc.setLineWidth(0.2);
+      doc.line(ML, H - 12, ML + ancho, H - 12);
+      w.font(7.5, 'normal', PDF_COL.gris);
+      doc.text(pdfTxt(texto), ML, H - 10.5, { baseline: 'top' });
+      doc.text(`Página ${i} de ${n}`, ML + ancho, H - 10.5, { baseline: 'top', align: 'right' });
+    }
+  };
+
+  encabezado();
+  return w;
+}
+
+// Encabezado de cada hoja: marca, tipo de documento, fecha y paciente
+function pdfEncabezado(w, { tituloDoc, emitido, nombre, extras }) {
+  const { doc, ML, ancho } = w;
+  let y = w.y;
+  w.font(15, 'bold', PDF_COL.marca);
+  doc.text('PediConsult', ML, y, { baseline: 'top' });
+  w.font(8.5, 'normal', PDF_COL.gris);
+  doc.text(pdfTxt('Consultorio pediátrico'), ML, y + 6.8, { baseline: 'top' });
+  w.font(10.5, 'bold');
+  doc.text(pdfTxt(tituloDoc).toUpperCase(), ML + ancho, y + 1, { baseline: 'top', align: 'right' });
+  w.font(8.5, 'normal', PDF_COL.gris);
+  doc.text(pdfTxt('Emitido el ' + emitido), ML + ancho, y + 6.8, { baseline: 'top', align: 'right' });
+  y += 13;
+  w.font(11, 'bold');
+  doc.text(pdfTxt(nombre), ML, y, { baseline: 'top' });
+  y += w.lineH(11);
+  const resto = extras.filter(Boolean).join('   ·   ');
+  if (resto) {
+    const lns = w.lineas(resto, 9, 'normal', ancho);
+    w.font(9, 'normal', PDF_COL.gris);
+    lns.forEach(l => { doc.text(l, ML, y, { baseline: 'top' }); y += w.lineH(9); });
+  }
+  y += 1.5;
+  doc.setDrawColor(...PDF_COL.linea); doc.setLineWidth(0.6);
+  doc.line(ML, y, ML + ancho, y);
+  w.y = y + 5;
+}
+
+// Bloque de firma (aval del médico). Se prepara aparte porque la imagen hay
+// que cargarla antes (async) y su altura hace falta para decidir dónde
+// cortar la hoja; dibujar() es síncrono.
+async function pdfPrepararFirma(w, firma) {
+  const { doc, ML, ancho } = w;
+  const anchoF = ancho * 0.55, x0 = ML + ancho - anchoF;
+  let png = null, imgW = 0, imgH = 0;
+  if (firma.dataUrl) {
+    // Se normaliza a PNG con un canvas: así da igual en qué formato se
+    // subió la firma en "Mi Perfil".
+    const img = await new Promise(res => {
+      const i = new Image();
+      i.onload = () => res(i); i.onerror = () => res(null);
+      i.src = firma.dataUrl;
+    });
+    if (img && img.naturalWidth) {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      png = c.toDataURL('image/png');
+      imgH = Math.min(24, anchoF * img.naturalHeight / img.naturalWidth);
+      imgW = imgH * img.naturalWidth / img.naturalHeight;
+    }
+  }
+  const espacio = png ? imgH : 18;
+  const altura = 10 + espacio + 2.5 + w.lineH(10.5) + (firma.det ? w.lineH(9) : 0);
+  return {
+    altura,
+    dibujar() {
+      w.asegurar(altura);
+      let y = w.y + 10;
+      if (png) doc.addImage(png, 'PNG', x0 + (anchoF - imgW) / 2, y, imgW, imgH);
+      y += espacio + 1;
+      doc.setDrawColor(...PDF_COL.texto); doc.setLineWidth(0.3);
+      doc.line(x0, y, x0 + anchoF, y);
+      y += 1.5;
+      w.font(10.5, 'bold');
+      doc.text(pdfTxt(firma.nombre || 'Firma y aclaración'), x0 + anchoF / 2, y, { baseline: 'top', align: 'center' });
+      y += w.lineH(10.5);
+      if (firma.det) {
+        w.font(9, 'normal', PDF_COL.gris);
+        doc.text(pdfTxt(firma.det), x0 + anchoF / 2, y, { baseline: 'top', align: 'center' });
+        y += w.lineH(9);
+      }
+      w.y = y;
+    },
+  };
+}
+
+// Datos del reporte clínico, armados una sola vez: de acá salen tanto la
+// vista previa (renderReporteClinicoHtml) como el PDF
+// (construirPdfReporteClinico), así los dos no pueden mostrar cosas distintas.
+function buildReporteClinicoData(rec, consultas, choice) {
+  const f       = rec.fields;
+  const nombre  = f[FP.nombre] || 'Sin nombre';
+  const fnac    = f[FP.fnac];
   const edad    = calcEdad(fnac);
   const edadStr = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
-  const sexo    = rec.fields[FP.sexo]?.name || rec.fields[FP.sexo] || '';
-  const dni     = rec.fields[FP.dni] ? `DNI ${Math.round(rec.fields[FP.dni]).toLocaleString()}` : '';
-  const os      = rec.fields[FP.obraSoc] || '';
-  const dom     = rec.fields[FP.domicilio] || '';
-  const tutor   = rec.fields[FP.tutor] || '';
-  const tel     = rec.fields[FP.telTutor] || '';
-  const legDiag = rec.fields[FP.diag] || '', legAntec = rec.fields[FP.antec] || '', legNotas = rec.fields[FP.notas] || '';
+  const sexo    = f[FP.sexo]?.name || f[FP.sexo] || '';
+  const dni     = f[FP.dni] ? `DNI ${Math.round(f[FP.dni]).toLocaleString()}` : '';
+  const os      = f[FP.obraSoc] || '';
   const hoyStr  = fmtDate(new Date().toISOString().slice(0,10));
+  const seleccionadas = choice === 'todas' ? consultas : consultas.filter(r => r.id === choice);
+  const conValor = pares => pares.filter(([, v]) => v);
+  return {
+    nombre, hoyStr, dni, os,
+    nacStr: fnac ? `Nac. ${fmtDate(fnac)}${edadStr ? ' (' + edadStr + ')' : ''}` : '',
+    datos: conValor([
+      ['Fecha nac.', fnac ? fmtDate(fnac) : ''], ['Edad', edadStr], ['Sexo', sexo], ['DNI', dni],
+      ['Obra Social', os], ['Domicilio', f[FP.domicilio] || ''], ['Tutor', f[FP.tutor] || ''], ['Teléfono', f[FP.telTutor] || ''],
+    ]),
+    // Datos clínicos de antes del historial que todavía no se migraron
+    legado: conValor([['Diagnóstico', f[FP.diag] || ''], ['Antecedentes', f[FP.antec] || ''], ['Notas Clínicas', f[FP.notas] || '']]),
+    historialTitulo: 'Historial clínico' + (choice === 'todas' ? '' : ' — instancia seleccionada'),
+    instancias: seleccionadas.map(r => ({
+      fecha: r.fields[FC.fecha] ? fmtDate(r.fields[FC.fecha]) : 'Sin fecha',
+      secciones: conValor([
+        ['Diagnóstico Principal', r.fields[FC.diag] || ''],
+        ['Antecedentes', r.fields[FC.antec] || ''],
+        ['Tratamiento', r.fields[FC.obs] || ''],
+      ]),
+    })),
+    firma: reporteFirmaData(),
+    titulo: `Reporte clínico - ${nombre}`,
+    fileName: pdfFileName(`Reporte clínico - ${nombre} - ${hoyStr}`),
+  };
+}
 
-  const field = (lbl, v) => v ? `<div class="rpt-field"><span>${lbl}</span><span>${escHtml(String(v))}</span></div>` : '';
-  const txt   = (lbl, v) => v ? `<div class="rpt-inst-lbl">${lbl}</div><div class="rpt-inst-txt">${escHtml(v)}</div>` : '';
+function renderReporteClinicoHtml(d) {
+  const field = (lbl, v) => `<div class="rpt-field"><span>${lbl}</span><span>${escHtml(String(v))}</span></div>`;
+  const txt   = (lbl, v) => `<div class="rpt-inst-lbl">${lbl}</div><div class="rpt-inst-txt">${escHtml(v)}</div>`;
   const filaTr = html => `<tr><td>${html}</td></tr>`;
-
-  const seleccionadas = choice === 'todas' ? reporteConsultas : reporteConsultas.filter(r => r.id === choice);
 
   // Encabezado repetido en cada hoja: identificación del documento y del paciente
   const headHtml = `
@@ -2711,47 +3121,32 @@ function generarReportePdf() {
           <div class="rpt-brand">PediConsult</div>
           <div class="rpt-brand-sub">Consultorio pediátrico</div>
         </div>
-        <div class="rpt-doc"><strong>Reporte clínico</strong>Emitido el ${escHtml(hoyStr)}</div>
+        <div class="rpt-doc"><strong>Reporte clínico</strong>Emitido el ${escHtml(d.hoyStr)}</div>
       </div>
       <div class="rpt-pac">
-        <b>${escHtml(nombre)}</b>
-        ${dni ? `<span>${escHtml(dni)}</span>` : ''}
-        ${fnac ? `<span>Nac. ${escHtml(fmtDate(fnac))}${edadStr ? ' (' + escHtml(edadStr) + ')' : ''}</span>` : ''}
-        ${os ? `<span>${escHtml(os)}</span>` : ''}
+        <b>${escHtml(d.nombre)}</b>
+        ${[d.dni, d.nacStr, d.os].filter(Boolean).map(s => `<span>${escHtml(s)}</span>`).join('')}
       </div>
     </div>`;
 
   const filas = [];
   filas.push(`
     <div class="rpt-sec">Datos del paciente</div>
-    <div class="rpt-box">
-      ${field('Fecha nac.', fnac ? fmtDate(fnac) : '')}
-      ${field('Edad', edadStr)}
-      ${field('Sexo', sexo)}
-      ${field('DNI', dni)}
-      ${field('Obra Social', os)}
-      ${field('Domicilio', dom)}
-      ${field('Tutor', tutor)}
-      ${field('Teléfono', tel)}
-    </div>`);
+    <div class="rpt-box">${d.datos.map(([l, v]) => field(l, v)).join('')}</div>`);
 
-  // Datos clínicos de antes del historial que todavía no se migraron
-  if (legDiag || legAntec || legNotas) {
+  if (d.legado.length) {
     filas.push(`
       <div class="rpt-sec">Datos clínicos previos al historial</div>
-      <div class="rpt-box">${txt('Diagnóstico', legDiag)}${txt('Antecedentes', legAntec)}${txt('Notas Clínicas', legNotas)}</div>`);
+      <div class="rpt-box">${d.legado.map(([l, v]) => txt(l, v)).join('')}</div>`);
   }
 
-  filas.push(`<div class="rpt-sec">Historial clínico${choice === 'todas' ? '' : ' — instancia seleccionada'}</div>`);
-  if (seleccionadas.length) {
-    seleccionadas.forEach(r => {
-      const fecha = r.fields[FC.fecha] ? fmtDate(r.fields[FC.fecha]) : 'Sin fecha';
+  filas.push(`<div class="rpt-sec">${escHtml(d.historialTitulo)}</div>`);
+  if (d.instancias.length) {
+    d.instancias.forEach(inst => {
       filas.push(`
         <div class="rpt-box">
-          <div class="rpt-inst-fecha">${escHtml(fecha)}</div>
-          ${txt('Diagnóstico Principal', r.fields[FC.diag] || '')}
-          ${txt('Antecedentes', r.fields[FC.antec] || '')}
-          ${txt('Tratamiento', r.fields[FC.obs] || '')}
+          <div class="rpt-inst-fecha">${escHtml(inst.fecha)}</div>
+          ${inst.secciones.map(([l, v]) => txt(l, v)).join('')}
         </div>`);
     });
   } else {
@@ -2761,15 +3156,67 @@ function generarReportePdf() {
   // La firma nunca queda sola en una hoja: va pegada al último bloque, y
   // si no entran juntos en lo que queda de la página, pasan juntos a la
   // siguiente (break-inside:avoid sobre el contenedor).
-  filas.push(`<div class="rpt-cierre">${filas.pop()}${reporteFirmaHtml()}</div>`);
+  filas.push(`<div class="rpt-cierre">${filas.pop()}${reporteFirmaHtml(d.firma)}</div>`);
 
-  document.getElementById('report-print-area').innerHTML = `
+  return `
     <table class="rpt-table">
       <thead><tr><td>${headHtml}</td></tr></thead>
       <tbody>${filas.map(filaTr).join('')}</tbody>
     </table>`;
+}
 
-  printReportArea(`Reporte clínico - ${nombre} - ${hoyStr}`);
+async function construirPdfReporteClinico(jsPDF, d) {
+  const w = crearPdfWriter(jsPDF, w => pdfEncabezado(w, {
+    tituloDoc: 'Reporte clínico', emitido: d.hoyStr, nombre: d.nombre, extras: [d.dni, d.nacStr, d.os],
+  }));
+
+  w.seccion('Datos del paciente');
+  w.abrirCaja();
+  d.datos.forEach(([l, v]) => w.campo(l, v));
+  w.cerrarCaja();
+
+  if (d.legado.length) {
+    w.seccion('Datos clínicos previos al historial');
+    w.abrirCaja(w.alturaBloques(d.legado));
+    d.legado.forEach(([l, v]) => w.bloqueTexto(l, v));
+    w.cerrarCaja();
+  }
+
+  const firma = await pdfPrepararFirma(w, d.firma);
+  w.seccion(d.historialTitulo);
+  if (d.instancias.length) {
+    d.instancias.forEach((inst, i) => {
+      // Igual que en la vista previa: el último bloque y la firma pasan
+      // juntos a la hoja siguiente si no entran en lo que queda de ésta.
+      const ultima = i === d.instancias.length - 1;
+      w.abrirCaja(w.alturaBloques(inst.secciones, true) + (ultima ? firma.altura : 0));
+      w.titulo(inst.fecha);
+      inst.secciones.forEach(([l, v]) => w.bloqueTexto(l, v));
+      w.cerrarCaja();
+    });
+  } else {
+    w.parrafo('Sin instancias del historial para incluir.', { size: 9.5, color: PDF_COL.gris });
+  }
+  firma.dibujar();
+
+  w.pie(`PediConsult · Reporte clínico · ${d.nombre}`);
+  return w.doc;
+}
+
+function generarReportePdf() {
+  const rec = reportePacRec;
+  if (!rec) return;
+  const sel = document.querySelector('input[name="reporte-inst"]:checked');
+  const choice = sel ? sel.value : 'todas';
+  closeModal('modal-reporte-instancias');
+
+  const d = buildReporteClinicoData(rec, reporteConsultas, choice);
+  openReportViewer({
+    titulo: d.titulo,
+    html: renderReporteClinicoHtml(d),
+    fileName: d.fileName,
+    construirPdf: jsPDF => construirPdfReporteClinico(jsPDF, d),
+  });
 }
 
 // ===== REPORTE DE HISTORIAL DE VACUNACIÓN (por paciente) =====
@@ -2783,15 +3230,15 @@ async function fetchVacunasByPatient(pacId) {
   } catch(_) { return []; }
 }
 
-async function generarReporteVacunacion(pacId) {
-  const pac = allPacientes.find(p => p.id === pacId);
-  if (!pac) { showToast('No se pudo cargar el paciente'); return; }
+// Datos del reporte de vacunación; igual que el clínico, de acá salen la
+// vista previa y el PDF.
+async function buildReporteVacunacionData(pac) {
+  const pacId   = pac.id;
   const nombre  = pac.fields[FP.nombre] || 'Sin nombre';
   const fnac    = pac.fields[FP.fnac];
   const edad    = calcEdad(fnac);
   const edadStr = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
   const dni     = pac.fields[FP.dni] ? `DNI ${Math.round(pac.fields[FP.dni]).toLocaleString()}` : '';
-  const row = (lbl, v) => v ? `<div class="review-field"><span class="review-field-lbl">${lbl}</span><span class="review-field-val">${escHtml(String(v))}</span></div>` : '';
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const esAdulto = (edad ?? 0) > 15; // ver classifyVacuna(): a partir de los 15 años, "No aplicada" en vez de "Atrasada"
@@ -2835,46 +3282,129 @@ async function generarReporteVacunacion(pacId) {
   const atrasadas = items.filter(i => i.estado === 'pendiente' && i.cls === 'tag-red').length;
   const proximas  = items.filter(i => i.estado === 'pendiente' && i.cls === 'tag-amber').length;
   const futuras   = items.filter(i => i.estado === 'pendiente' && i.cls === 'tag-green').length;
-  const resumenChip = (n, lbl, cls) => n ? `<span class="tag ${cls}" style="font-size:12px;padding:5px 12px;margin:0 6px 6px 0">${n} ${lbl}</span>` : '';
+  const resumen = [
+    [aplicadas, aplicadas===1?'aplicada':'aplicadas', 'tag-green'],
+    [atrasadas, esAdulto ? (atrasadas===1?'no aplicada':'no aplicadas') : (atrasadas===1?'atrasada':'atrasadas'), 'tag-red'],
+    [proximas, proximas===1?'próxima / pendiente':'próximas / pendientes', 'tag-amber'],
+    [futuras, futuras===1?'programada más adelante':'programadas más adelante', 'tag-green'],
+  ].filter(([n]) => n).map(([n, lbl, cls]) => ({ texto: `${n} ${lbl}`, cls }));
+
+  const hoyStr = fmtDate(new Date().toISOString().slice(0,10));
+  return {
+    nombre, hoyStr, dni, emptyMsg, resumen,
+    nacStr: fnac ? `Nac. ${fmtDate(fnac)}${edadStr ? ' (' + edadStr + ')' : ''}` : '',
+    datos: [['Fecha nac.', fnac ? fmtDate(fnac) : ''], ['Edad', edadStr], ['DNI', dni]].filter(([, v]) => v),
+    items: items.map(it => ({ ...it, fechaStr: it.fechaProg ? fmtDate(it.fechaProg) : '' })),
+    titulo: `Reporte de vacunación - ${nombre}`,
+    fileName: pdfFileName(`Reporte de vacunación - ${nombre} - ${hoyStr}`),
+  };
+}
+
+function renderReporteVacunacionHtml(d) {
+  const row = (lbl, v) => `<div class="review-field"><span class="review-field-lbl">${lbl}</span><span class="review-field-val">${escHtml(String(v))}</span></div>`;
   const resumenHtml = `
     <div class="review-card" style="margin-top:10px">
       <div class="review-lbl">Resumen</div>
       <div class="review-divider"></div>
       <div style="display:flex;flex-wrap:wrap">
-        ${resumenChip(aplicadas, aplicadas===1?'aplicada':'aplicadas', 'tag-green')}
-        ${resumenChip(atrasadas, esAdulto ? (atrasadas===1?'no aplicada':'no aplicadas') : (atrasadas===1?'atrasada':'atrasadas'), 'tag-red')}
-        ${resumenChip(proximas, proximas===1?'próxima / pendiente':'próximas / pendientes', 'tag-amber')}
-        ${resumenChip(futuras, futuras===1?'programada más adelante':'programadas más adelante', 'tag-green')}
+        ${d.resumen.map(r => `<span class="tag ${r.cls}" style="font-size:12px;padding:5px 12px;margin:0 6px 6px 0">${escHtml(r.texto)}</span>`).join('')}
       </div>
     </div>`;
-
-  const rowsHtml = items.length ? items.map(it => `
+  const rowsHtml = d.items.length ? d.items.map(it => `
     <div class="review-field" style="align-items:center">
       <span class="review-field-lbl" style="width:auto;flex:1;color:var(--text)">${escHtml(it.vacuna)}${it.edadInd ? ' · ' + escHtml(it.edadInd) : ''}</span>
       <span class="review-field-val" style="text-align:right;flex:0 0 auto;white-space:nowrap">
-        <span class="tag ${it.cls}" style="margin-right:6px">${it.label}</span>${it.fechaProg ? fmtDate(it.fechaProg) : ''}
+        <span class="tag ${it.cls}" style="margin-right:6px">${escHtml(it.label)}</span>${it.fechaStr}
       </span>
-    </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">${emptyMsg}</div>`;
+    </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">${d.emptyMsg}</div>`;
 
-  const area = document.getElementById('report-print-area');
-  area.innerHTML = `
-    <div class="print-header">Reporte de vacunación — generado el ${fmtDate(new Date().toISOString().slice(0,10))}</div>
+  return `
+    <div class="print-header">Reporte de vacunación — generado el ${escHtml(d.hoyStr)}</div>
     <div class="review-card">
       <div class="review-lbl">Paciente</div>
-      <div class="review-campo1">${escHtml(nombre)}</div>
+      <div class="review-campo1">${escHtml(d.nombre)}</div>
       <div class="review-divider"></div>
-      ${row('Fecha nac.', fnac ? fmtDate(fnac) : '')}
-      ${row('Edad', edadStr)}
-      ${row('DNI', dni)}
+      ${d.datos.map(([l, v]) => row(l, v)).join('')}
     </div>
-    ${items.length ? resumenHtml : ''}
+    ${d.items.length ? resumenHtml : ''}
     <div class="review-card" style="margin-top:10px">
       <div class="review-lbl">Historial de vacunación</div>
       <div class="review-divider"></div>
       ${rowsHtml}
     </div>
   `;
-  printReportArea(`Reporte de vacunación - ${nombre}`);
+}
+
+function construirPdfReporteVacunacion(jsPDF, d) {
+  const w = crearPdfWriter(jsPDF, w => pdfEncabezado(w, {
+    tituloDoc: 'Reporte de vacunación', emitido: d.hoyStr, nombre: d.nombre, extras: [d.dni, d.nacStr],
+  }));
+  const { doc, ML, ancho } = w;
+
+  if (d.resumen.length) {
+    w.seccion('Resumen', 10);
+    let x = ML, y = w.y;
+    const th = w.lineH(8.5) + 1.4;
+    d.resumen.forEach(r => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+      const tw = doc.getTextWidth(pdfTxt(r.texto)) + 5;
+      if (x + tw > ML + ancho) { x = ML; y += th + 2; }
+      x += w.tag(r.texto, r.cls, x, y) + 2;
+    });
+    w.y = y + th + 5;
+  }
+
+  w.seccion('Historial de vacunación');
+  if (!d.items.length) {
+    w.parrafo(d.emptyMsg, { size: 9.5, color: PDF_COL.gris });
+  } else {
+    // Columnas: vacuna (con edad indicada) | estado | fecha
+    const colFecha = 24, colEstado = 42;
+    const anchoVac = ancho - colEstado - colFecha - 3;
+    const xEstado = ML + anchoVac + 3, lh = w.lineH(9.5);
+    const cabecera = () => {
+      w.font(7.5, 'bold', PDF_COL.gris);
+      doc.text('VACUNA', ML, w.y, { baseline: 'top' });
+      doc.text('ESTADO', xEstado, w.y, { baseline: 'top' });
+      doc.text('FECHA', ML + ancho, w.y, { baseline: 'top', align: 'right' });
+      w.y += w.lineH(7.5) + 1;
+      doc.setDrawColor(...PDF_COL.borde); doc.setLineWidth(0.4);
+      doc.line(ML, w.y, ML + ancho, w.y);
+      w.y += 1.8;
+    };
+    cabecera();
+    w.onNuevaPagina = cabecera; // la cabecera de la tabla se repite en cada hoja
+    d.items.forEach(it => {
+      const lns = w.lineas(it.vacuna + (it.edadInd ? ' · ' + it.edadInd : ''), 9.5, 'normal', anchoVac);
+      const altoFila = Math.max(lns.length * lh, w.lineH(8) + 1.4) + 2.2;
+      w.asegurar(altoFila);
+      const y0 = w.y;
+      w.font(9.5);
+      lns.forEach((l, i) => doc.text(l, ML, y0 + i * lh, { baseline: 'top' }));
+      w.tag(it.label, it.cls, xEstado, y0 - 0.3, 8);
+      w.font(9.5, 'normal', PDF_COL.gris);
+      doc.text(pdfTxt(it.fechaStr), ML + ancho, y0, { baseline: 'top', align: 'right' });
+      w.y = y0 + altoFila;
+      doc.setDrawColor(...PDF_COL.borde); doc.setLineWidth(0.2);
+      doc.line(ML, w.y - 1.2, ML + ancho, w.y - 1.2);
+    });
+    w.onNuevaPagina = null;
+  }
+
+  w.pie(`PediConsult · Reporte de vacunación · ${d.nombre}`);
+  return doc;
+}
+
+async function generarReporteVacunacion(pacId) {
+  const pac = allPacientes.find(p => p.id === pacId);
+  if (!pac) { showToast('No se pudo cargar el paciente'); return; }
+  const d = await buildReporteVacunacionData(pac);
+  openReportViewer({
+    titulo: d.titulo,
+    html: renderReporteVacunacionHtml(d),
+    fileName: d.fileName,
+    construirPdf: jsPDF => construirPdfReporteVacunacion(jsPDF, d),
+  });
 }
 
 function editCurrentPac() {
