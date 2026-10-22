@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="es-AR">
+<!--
+  Landing comercial de PediConsult.
+  ANTES DE PUBLICARLA (ver PLAN_MULTICONSULTORIO.md, Fase 0):
+  - La sección "Seguridad" promete login propio, backup diario y datos separados
+    por consultorio: no publicar hasta que eso exista.
+  - Los precios son orientativos (estrategia de crecimiento, 2026-10-21): ajustarlos.
+  - El formulario usa Netlify Forms: sólo funciona desplegado en Netlify
+    (Site settings → Forms → habilitar detección y notificación por email).
+-->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PediConsult — Historia clínica para consultorios pediátricos</title>
+<meta name="description" content="La historia clínica hecha para pediatría: calendario de vacunas automático, controles, dictado por voz e informes en PDF para los padres. Probala 30 días gratis.">
+<meta property="og:title" content="PediConsult — Historia clínica para consultorios pediátricos">
+<meta property="og:description" content="Calendario de vacunas automático, avisos de atrasos, dictado por voz e informes para los padres.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" href="../icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Misma paleta que la app (index.html :root) */
+  :root{
+    --bg:#F2F5F3;--bg2:#FFFFFF;--bg3:#E9EFEC;
+    --blue:#2B6E73;--blue2:#1F5459;--teal:#3E7A8C;--red:#A6433B;--amber:#A9611E;--green:#3E7A57;
+    --text:#1B2B2E;--text2:#5E7175;--text3:#8A9A9C;
+    --border:#DEE4E2;--border2:#C3CDCA;
+    --radius:10px;--radius-sm:6px;
+    --font-display:'IBM Plex Serif',Georgia,serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+  a{color:var(--blue2)}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+  h1,h2{font-family:var(--font-display);color:var(--blue2);line-height:1.2}
+  h2{font-size:clamp(24px,4vw,30px);margin-bottom:12px}
+  section{padding:56px 0}
+  .sub{color:var(--text2);font-size:17px;max-width:620px}
+  .kicker{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--teal);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px}
+
+  header{background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;height:60px;gap:12px}
+  .logo{font-family:var(--font-display);font-size:21px;font-weight:600;color:var(--blue2);text-decoration:none}
+  .logo span{color:var(--teal)}
+  header nav{display:flex;gap:20px;align-items:center}
+  header nav a{text-decoration:none;font-size:14px;font-weight:500;color:var(--text2)}
+  header nav a.btn{color:#fff}
+
+  .btn{font:inherit;font-weight:600;font-size:15px;border:0;border-radius:var(--radius-sm);padding:12px 20px;background:var(--blue);color:#fff;cursor:pointer;text-decoration:none;display:inline-block;text-align:center}
+  .btn:hover{background:var(--blue2)}
+  .btn.ghost{background:transparent;color:var(--blue2);border:1px solid var(--border2)}
+  .btn.ghost:hover{background:var(--bg3)}
+  .btn.sm{padding:8px 14px;font-size:14px}
+
+  /* Hero */
+  .hero{padding:56px 0 48px}
+  .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center}
+  .hero h1{font-size:clamp(30px,5vw,46px);margin-bottom:16px}
+  .hero .acciones{display:flex;gap:12px;flex-wrap:wrap;margin:28px 0 12px}
+  .hero small{color:var(--text3);font-size:13px}
+
+  .phone{background:var(--bg2);border:1px solid var(--border2);border-radius:28px;padding:18px 14px;max-width:340px;margin:0 auto;box-shadow:0 20px 50px -24px rgba(31,84,89,.35)}
+  .phone .ph-head{display:flex;justify-content:space-between;align-items:baseline;padding:0 6px 10px;border-bottom:1px solid var(--border)}
+  .phone .ph-name{font-family:var(--font-display);font-weight:600;font-size:17px}
+  .phone .ph-age{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text2)}
+  .phone .ph-sec{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:14px 6px 6px}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:14px}
+  .row .d{font-size:12px;color:var(--text2)}
+  .tag{font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .tag.red{background:#F5E1DF;color:var(--red)} .tag.amber{background:#F6EADC;color:var(--amber)} .tag.green{background:#E2EEE6;color:var(--green)}
+  .ph-btn{margin-top:12px;text-align:center;font-size:13px;font-weight:600;color:var(--blue2);border:1px dashed var(--border2);border-radius:8px;padding:9px}
+
+  /* Dolores */
+  .dolores{background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+  .dolores .card{background:var(--bg)}
+  .card h3{font-size:17px;margin-bottom:6px}
+  .card p{color:var(--text2);font-size:15px}
+  .num{font-family:'IBM Plex Mono',monospace;color:var(--teal);font-size:13px;margin-bottom:8px;display:block}
+
+  /* Funciones */
+  .funcs{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:28px}
+  .func{display:flex;gap:14px}
+  .func .ic{flex-shrink:0;width:40px;height:40px;border-radius:10px;background:#E1EEF1;color:var(--blue2);display:grid;place-items:center}
+  .func .ic svg{width:22px;height:22px}
+  .func h3{font-size:16px;margin-bottom:2px}
+  .func p{color:var(--text2);font-size:15px}
+
+  /* Seguridad */
+  .seg{background:var(--blue2);color:#fff}
+  .seg h2{color:#fff}
+  .seg .sub{color:#D5E5E6}
+  .seg ul{list-style:none;display:grid;grid-template-columns:repeat(2,1fr);gap:12px 24px;margin-top:24px}
+  .seg li{padding-left:26px;position:relative;color:#EAF2F2}
+  .seg li::before{content:'';position:absolute;left:0;top:7px;width:14px;height:8px;border-left:2px solid #9FD0C7;border-bottom:2px solid #9FD0C7;transform:rotate(-45deg)}
+
+  /* Planes */
+  .planes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px;align-items:stretch}
+  .plan{display:flex;flex-direction:column}
+  .plan.destacado{border:2px solid var(--blue)}
+  .plan .badge{align-self:flex-start;background:var(--blue);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;margin-bottom:10px}
+  .plan h3{font-family:var(--font-display);font-size:20px;color:var(--blue2)}
+  .plan .precio{font-family:'IBM Plex Mono',monospace;font-size:26px;margin:10px 0 2px}
+  .plan .precio small{font-size:13px;color:var(--text2);font-family:'IBM Plex Sans',sans-serif}
+  .plan .para{color:var(--text2);font-size:14px;margin-bottom:14px}
+  .plan ul{list-style:none;font-size:14px;flex:1;margin-bottom:18px}
+  .plan li{padding:5px 0 5px 22px;position:relative;border-top:1px solid var(--border)}
+  .plan li::before{content:'';position:absolute;left:2px;top:12px;width:10px;height:6px;border-left:2px solid var(--green);border-bottom:2px solid var(--green);transform:rotate(-45deg)}
+  .nota-precios{font-size:13px;color:var(--text2);margin-top:16px}
+
+  .fundadores{margin-top:24px;background:#F6EADC;border:1px solid #E7CFB1;border-radius:var(--radius);padding:18px 20px;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .fundadores b{color:var(--amber)}
+
+  /* Herramienta gratis */
+  .tool{display:flex;gap:24px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+
+  /* FAQ */
+  details{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:10px}
+  summary{font-weight:600;cursor:pointer}
+  details p{color:var(--text2);margin-top:10px}
+
+  /* Formulario */
+  .form-wrap{display:grid;grid-template-columns:.9fr 1.1fr;gap:40px;align-items:start}
+  form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  form .full{grid-column:1/-1}
+  label{font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px}
+  input,select{font:inherit;font-size:16px;width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:#fff;color:var(--text)}
+  input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px}
+  .legal{font-size:12px;color:var(--text3)}
+  .gracias{display:none;background:#E2EEE6;border:1px solid #BFD8C7;color:var(--green);border-radius:var(--radius);padding:16px 20px;font-weight:500}
+  .pasos{list-style:none;margin-top:20px;counter-reset:p}
+  .pasos li{counter-increment:p;padding-left:36px;position:relative;margin-bottom:14px;color:var(--text2)}
+  .pasos li::before{content:counter(p);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-size:13px;font-weight:600;display:grid;place-items:center}
+  .pasos b{color:var(--text)}
+
+  footer{border-top:1px solid var(--border);padding:28px 0 48px;font-size:13px;color:var(--text2)}
+  footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  @media (max-width:860px){
+    .hero .wrap,.form-wrap{grid-template-columns:1fr}
+    .grid3,.planes{grid-template-columns:1fr}
+    .funcs,.seg ul{grid-template-columns:1fr}
+    header nav a:not(.btn){display:none}
+  }
+  @media (max-width:520px){
+    form{grid-template-columns:1fr}
+    .hero .acciones .btn{width:100%}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="logo" href="#">Pedi<span>Consult</span></a>
+    <nav>
+      <a href="#funciones">Funciones</a>
+      <a href="#planes">Planes</a>
+      <a href="#preguntas">Preguntas</a>
+      <a class="btn sm" href="#prueba">Probar gratis</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <div class="kicker">Para consultorios pediátricos</div>
+        <h1>La historia clínica hecha para pediatría</h1>
+        <p class="sub">El calendario de vacunas y los controles se arman solos con la fecha de nacimiento. Dictás la consulta y les mandás el informe a los padres en PDF. Desde el celular o la compu.</p>
+        <div class="acciones">
+          <a class="btn" href="#prueba">Probar 30 días gratis</a>
+          <a class="btn ghost" href="#prueba">Pedir una demo de 15 min</a>
+        </div>
+        <small>Sin tarjeta. Te cargamos tus fichas gratis.</small>
+      </div>
+      <div class="phone" aria-label="Ejemplo de la ficha de vacunas de un paciente en PediConsult">
+        <div class="ph-head"><span class="ph-name">Paciente de ejemplo</span><span class="ph-age">9 meses</span></div>
+        <div class="ph-sec">Vacunas</div>
+        <div class="row"><div>Meningocócica ACYW<div class="d">2ª dosis · 5 meses</div></div><span class="tag red">Atrasada</span></div>
+        <div class="row"><div>Quíntuple<div class="d">3ª dosis · 6 meses</div></div><span class="tag green">Aplicada</span></div>
+        <div class="row"><div>Triple Viral (SRP)<div class="d">1ª dosis · 12 meses</div></div><span class="tag amber">En 3 meses</span></div>
+        <div class="ph-sec">Controles</div>
+        <div class="row"><div>Control de niño sano<div class="d">9 meses</div></div><span class="tag amber">Esta semana</span></div>
+        <div class="ph-btn">Generar informe para los padres (PDF)</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dolores">
+    <div class="wrap">
+      <h2>Menos tiempo escribiendo, menos pacientes que se atrasan</h2>
+      <p class="sub">Un software genérico no sabe de pediatría. PediConsult sí.</p>
+      <div class="grid3">
+        <div class="card"><span class="num">01</span><h3>Vacunas al día sin revisar fichas</h3><p>Con la fecha de nacimiento se arma el esquema del Calendario Nacional 2026, y ves quién está atrasado sin abrir paciente por paciente.</p></div>
+        <div class="card"><span class="num">02</span><h3>La consulta se escribe sola</h3><p>Dictás los datos y el tratamiento por voz mientras mirás al paciente, no a la pantalla.</p></div>
+        <div class="card"><span class="num">03</span><h3>Padres informados</h3><p>Informe de la consulta y carnet de vacunas en PDF, listo para mandar por WhatsApp, y recordatorios automáticos por email.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="funciones">
+    <div class="wrap">
+      <div class="kicker">Funciones</div>
+      <h2>Todo lo que tu consultorio necesita, nada que no uses</h2>
+      <div class="funcs">
+        <div class="func"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 2l4 4M15 5l4 4M7 13l4 4M4 20l3-3M9 11l6-6 4 4-6 6H9v-4z"/></svg></div><div><h3>Calendario de vacunas automático</h3><p>Esquema por paciente según su edad, con atrasos, próximas dosis y reporte imprimible.</p></div></div>
+        <div class="func"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/></svg></div><div><h3>Controles de niño sano</h3><p>Agenda de controles por paciente y vista general de los que vencen esta semana.</p></div></div>
+        <div class="func"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></div><div><h3>Carga por voz</h3><p>Dictado libre o guiado campo por campo, con confirmación antes de guardar.</p></div></div>
+        <div class="func"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div><div><h3>Historia clínica e informes PDF</h3><p>Todas las consultas del paciente, con tu firma y matrícula, para compartir desde el celular.</p></div></div>
+        <div class="func"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4h16v12H5.5L4 17.5z"/><path d="M8 9h8M8 12h5"/></svg></div><div><h3>Recordatorios a los padres</h3><p>Aviso automático por email antes de cada vacuna o control programado.</p></div></div>
+        <div class="func"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></div><div><h3>Funciona en celular y compu</h3><p>Se instala como app desde el navegador. Nada que descargar de una tienda.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="seg">
+    <div class="wrap">
+      <h2>Datos de pacientes, cuidados como corresponde</h2>
+      <p class="sub">Son datos de salud de chicos. Los tratamos de acuerdo con la Ley 25.326 de protección de datos personales y la Ley 26.529 de derechos del paciente.</p>
+      <ul>
+        <li>Cada consultorio ve sólo sus pacientes</li>
+        <li>Usuario propio para cada profesional y secretaria</li>
+        <li>Copia de seguridad diaria</li>
+        <li>Registro de quién modificó cada ficha</li>
+        <li>Tus datos son tuyos: los exportás cuando quieras</li>
+        <li>Base de datos inscripta ante la AAIP</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="planes">
+    <div class="wrap">
+      <div class="kicker">Planes</div>
+      <h2>Menos de lo que vale una consulta por mes</h2>
+      <p class="sub">Todos los planes empiezan con 30 días gratis del plan Copiloto. Sin tarjeta y sin permanencia.</p>
+      <div class="planes">
+        <div class="card plan">
+          <h3>Esencial</h3>
+          <div class="precio">$ 20.000 <small>/ mes</small></div>
+          <p class="para">Para empezar a digitalizar el consultorio.</p>
+          <ul><li>Pacientes e historia clínica</li><li>Calendario de vacunas automático</li><li>Controles de niño sano</li><li>Informes en PDF</li></ul>
+          <a class="btn ghost" href="#prueba" data-plan="esencial">Empezar prueba</a>
+        </div>
+        <div class="card plan destacado">
+          <span class="badge">El más elegido</span>
+          <h3>Copiloto</h3>
+          <div class="precio">$ 45.000 <small>/ mes</small></div>
+          <p class="para">Para recuperar tiempo en cada consulta.</p>
+          <ul><li>Todo lo del Esencial</li><li>Carga y dictado por voz</li><li>Recordatorios automáticos a los padres</li><li>Migración de fichas sin costo</li></ul>
+          <a class="btn" href="#prueba" data-plan="copiloto">Empezar prueba</a>
+        </div>
+        <div class="card plan">
+          <h3>Consultorio</h3>
+          <div class="precio">$ 75.000 <small>/ mes</small></div>
+          <p class="para">Para 2 o más profesionales y secretaría.</p>
+          <ul><li>Todo lo del Copiloto</li><li>Usuarios para todo el equipo</li><li>Roles médico y administrativo</li><li>Soporte prioritario</li></ul>
+          <a class="btn ghost" href="#prueba" data-plan="consultorio">Hablar con nosotros</a>
+        </div>
+      </div>
+      <p class="nota-precios">Precios en pesos argentinos, finales. Pagando el año completo, 2 meses gratis. Se actualizan cada trimestre.</p>
+      <div class="fundadores">
+        <div><b>Programa fundadores:</b> los primeros 20 consultorios pagan 40 % menos de por vida, a cambio de contarnos qué mejorar.</div>
+        <a class="btn sm" href="#prueba" data-plan="fundador">Quiero ser fundador</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="dolores">
+    <div class="wrap tool">
+      <div>
+        <h2>Probá la calculadora de vacunas gratis</h2>
+        <p class="sub">Ingresá una fecha de nacimiento y mirá qué vacunas corresponden. Compartila con los padres de tus pacientes.</p>
+      </div>
+      <a class="btn" href="../herramientas/calendario-vacunas.html">Abrir calculadora</a>
+    </div>
+  </section>
+
+  <section id="preguntas">
+    <div class="wrap">
+      <h2>Preguntas frecuentes</h2>
+      <details><summary>¿Tengo que instalar algo?</summary><p>No. Funciona desde el navegador del celular o la computadora, y si querés la agregás a la pantalla de inicio como una app.</p></details>
+      <details><summary>Ya tengo mis pacientes en Excel o en papel. ¿Los tengo que cargar uno por uno?</summary><p>No. Mandanos el Excel o fotos de las fichas y los cargamos nosotros, sin costo, durante la prueba.</p></details>
+      <details><summary>¿Qué pasa cuando terminan los 30 días?</summary><p>Elegís un plan y seguís con todo lo que cargaste. Si no seguís, te damos una exportación de tus datos.</p></details>
+      <details><summary>¿Lo puede usar mi secretaria?</summary><p>Sí. En el plan Consultorio cada persona tiene su propio usuario, con rol de médico o administrativo.</p></details>
+      <details><summary>¿Sirve para otras especialidades?</summary><p>Está pensado para pediatría: calendario de vacunas, controles de niño sano e informes para los padres. Para otras especialidades hay opciones más genéricas.</p></details>
+    </div>
+  </section>
+
+  <section id="prueba" class="dolores">
+    <div class="wrap form-wrap">
+      <div>
+        <h2>Empezá tu prueba de 30 días</h2>
+        <p class="sub">Dejanos tus datos y te escribimos en el día.</p>
+        <ol class="pasos">
+          <li><b>Demo de 15 minutos</b> por videollamada, con tus dudas reales.</li>
+          <li><b>Te creamos el consultorio</b> y cargamos tus fichas si las tenés.</li>
+          <li><b>30 días de uso completo.</b> Recién ahí decidís.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="gracias" id="gracias" role="status">¡Gracias! Te escribimos dentro de las próximas 24 horas hábiles.</div>
+        <form name="prueba" method="POST" action="./?enviado=1#prueba" data-netlify="true" netlify-honeypot="empresa" id="form-prueba">
+          <input type="hidden" name="form-name" value="prueba">
+          <input type="hidden" name="plan" id="f-plan">
+          <input type="hidden" name="referido" id="f-ref">
+          <input type="hidden" name="utm_source" id="f-utm-source">
+          <input type="hidden" name="utm_medium" id="f-utm-medium">
+          <input type="hidden" name="utm_campaign" id="f-utm-campaign">
+          <p hidden><label>No completar <input name="empresa"></label></p>
+          <div><label for="f-nombre">Nombre y apellido</label><input id="f-nombre" name="nombre" required autocomplete="name"></div>
+          <div><label for="f-email">Email</label><input id="f-email" name="email" type="email" required autocomplete="email"></div>
+          <div><label for="f-wa">WhatsApp</label><input id="f-wa" name="whatsapp" type="tel" required autocomplete="tel" placeholder="11 5555 5555"></div>
+          <div><label for="f-ciudad">Ciudad</label><input id="f-ciudad" name="ciudad" required autocomplete="address-level2"></div>
+          <div><label for="f-prof">Profesionales en el consultorio</label>
+            <select id="f-prof" name="profesionales"><option>Sólo yo</option><option>2 a 3</option><option>4 o más</option></select></div>
+          <div><label for="f-hoy">Hoy registro las consultas en</label>
+            <select id="f-hoy" name="herramienta_actual"><option>Papel</option><option>Excel o Word</option><option>Otro software</option><option>Todavía no tengo consultorio</option></select></div>
+          <div class="full"><label for="f-canal">¿Cómo nos conociste?</label>
+            <select id="f-canal" name="canal"><option value="">Elegí una opción</option><option>Me lo recomendó un colega</option><option>Residencia</option><option>SAP o congreso</option><option>Instagram</option><option>LinkedIn</option><option>Google</option><option>Un informe o carnet de un paciente</option><option>Otro</option></select></div>
+          <div class="full"><button class="btn" type="submit" style="width:100%">Quiero probar PediConsult</button></div>
+          <p class="legal full">Usamos estos datos sólo para contactarte por la prueba. No los compartimos con terceros.</p>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 PediConsult</span>
+    <span><a href="../herramientas/calendario-vacunas.html">Calculadora de vacunas</a></span>
+  </div>
+</footer>
+
+<script>
+  // Atribución: canal (utm_*), colega que recomendó (?ref=) y plan elegido viajan
+  // en campos ocultos del formulario, para medir qué canal trae pruebas (ver
+  // "Métricas" en la estrategia de crecimiento).
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const guardado = (k) => { try { return sessionStorage.getItem(k); } catch (_) { return null; } };
+    const guardar = (k, v) => { try { sessionStorage.setItem(k, v); } catch (_) {} };
+    ['ref', 'utm_source', 'utm_medium', 'utm_campaign'].forEach(k => { if (q.get(k)) guardar(k, q.get(k)); });
+
+    document.getElementById('f-ref').value = guardado('ref') || '';
+    document.getElementById('f-utm-source').value = guardado('utm_source') || '';
+    document.getElementById('f-utm-medium').value = guardado('utm_medium') || '';
+    document.getElementById('f-utm-campaign').value = guardado('utm_campaign') || '';
+    if (guardado('ref')) document.getElementById('f-canal').value = 'Me lo recomendó un colega';
+
+    document.querySelectorAll('[data-plan]').forEach(a => a.addEventListener('click', () => {
+      document.getElementById('f-plan').value = a.dataset.plan;
+    }));
+
+    if (q.get('enviado')) {
+      document.getElementById('form-prueba').style.display = 'none';
+      document.getElementById('gracias').style.display = 'block';
+    }
+  })();
+</script>
+</body>
+</html>

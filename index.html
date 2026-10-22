@@ -1475,6 +1475,13 @@ function fmtDate(d) {
   if (!d) return '—';
   return new Date(d+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'});
 }
+// DNI sólo con dígitos, sin separadores de miles (toLocaleString ponía comas
+// o puntos según el idioma del navegador).
+function fmtDni(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  return Number.isFinite(n) ? String(Math.round(n)) : String(v).replace(/\D/g, '');
+}
 function compTag(c) {
   if (!c) return '';
   const cLow = c.toLowerCase();
@@ -2528,7 +2535,7 @@ async function openPacDetail(idx) {
   const edad     = calcEdad(fnac);
   const edadStr  = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
   const sexo     = rec.fields[FP.sexo]?.name || rec.fields[FP.sexo] || '';
-  const dni      = rec.fields[FP.dni] ? `DNI ${Math.round(rec.fields[FP.dni]).toLocaleString()}` : '';
+  const dni      = rec.fields[FP.dni] ? `DNI ${fmtDni(rec.fields[FP.dni])}` : '';
   const os       = rec.fields[FP.obraSoc] || '';
   const dom      = rec.fields[FP.domicilio] || '';
   const tutor    = rec.fields[FP.tutor] || '';
@@ -3079,7 +3086,7 @@ function buildReporteClinicoData(rec, consultas, choice) {
   const edad    = calcEdad(fnac);
   const edadStr = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
   const sexo    = f[FP.sexo]?.name || f[FP.sexo] || '';
-  const dni     = f[FP.dni] ? `DNI ${Math.round(f[FP.dni]).toLocaleString()}` : '';
+  const dni     = f[FP.dni] ? `DNI ${fmtDni(f[FP.dni])}` : '';
   const os      = f[FP.obraSoc] || '';
   const hoyStr  = fmtDate(new Date().toISOString().slice(0,10));
   const seleccionadas = choice === 'todas' ? consultas : consultas.filter(r => r.id === choice);
@@ -3238,7 +3245,7 @@ async function buildReporteVacunacionData(pac) {
   const fnac    = pac.fields[FP.fnac];
   const edad    = calcEdad(fnac);
   const edadStr = edad !== null ? (edad === 0 ? 'Menos de 1 año' : `${edad} año${edad !== 1?'s':''}`) : '';
-  const dni     = pac.fields[FP.dni] ? `DNI ${Math.round(pac.fields[FP.dni]).toLocaleString()}` : '';
+  const dni     = pac.fields[FP.dni] ? `DNI ${fmtDni(pac.fields[FP.dni])}` : '';
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const esAdulto = (edad ?? 0) > 15; // ver classifyVacuna(): a partir de los 15 años, "No aplicada" en vez de "Atrasada"
@@ -3678,7 +3685,7 @@ async function savePac(force = false) {
     if (dni) {
       const dniNum = parseFloat(dni);
       dupRec = allPacientes.find(r => { const d = r.fields[FP.dni]; return d && Math.round(d) === Math.round(dniNum); });
-      if (dupRec) dupTipo = `DNI ${Math.round(dniNum).toLocaleString()}`;
+      if (dupRec) dupTipo = `DNI ${fmtDni(dniNum)}`;
     }
     if (!dupRec && nombre) {
       const normNom = normNombreDedupe(nombre);
@@ -3688,7 +3695,7 @@ async function savePac(force = false) {
     if (dupRec) {
       const existNombre = dupRec.fields[FP.nombre] || 'Sin nombre';
       const existFnac = dupRec.fields[FP.fnac] ? ` · FN: ${fmtDate(dupRec.fields[FP.fnac])}` : '';
-      const existDni = dupRec.fields[FP.dni] ? ` · DNI: ${Math.round(dupRec.fields[FP.dni]).toLocaleString()}` : '';
+      const existDni = dupRec.fields[FP.dni] ? ` · DNI: ${fmtDni(dupRec.fields[FP.dni])}` : '';
       document.getElementById('pac-new-error').innerHTML = `
         <div style="background:rgba(169,97,30,0.12);border:1px solid var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:4px">
           <div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:5px">⚠ Posible duplicado (${escHtml(dupTipo)})</div>
@@ -6243,7 +6250,7 @@ function openDuplicadosPanel() {
           <div style="font-size:10px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Grupo ${gi+1} · ${g.tipo}</div>
           ${g.recs.map((r, ri) => {
             const nom = r.fields[FP.nombre] || 'Sin nombre';
-            const dni = r.fields[FP.dni] ? `DNI: ${Math.round(r.fields[FP.dni]).toLocaleString()}` : '';
+            const dni = r.fields[FP.dni] ? `DNI: ${fmtDni(r.fields[FP.dni])}` : '';
             const fn  = r.fields[FP.fnac] ? `FN: ${fmtDate(r.fields[FP.fnac])}` : '';
             const hc  = r.fields[FP.hc] ? `HC: ${r.fields[FP.hc]}` : '';
             const meta = [hc, dni, fn].filter(Boolean).join(' · ');

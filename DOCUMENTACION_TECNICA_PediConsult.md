@@ -108,7 +108,7 @@ Los tabs configurables son `cir, pac, seg, stock, dash, pase` — pero la navega
 |---|---|---|---|
 | Apellido (`pf-apellido`) | texto | **sí** | No tiene columna propia en Airtable — ver combinación abajo |
 | Nombre (`pf-nombre`) | texto | **sí** | Idem |
-| DNI (`pf-dni`) | numérico | no | Se guarda como número (`parseFloat`), único campo con transformación |
+| DNI (`pf-dni`) | numérico | no | Se guarda como número (`parseFloat`), único campo con transformación. Se muestra con `fmtDni()`: sólo dígitos, sin comas ni puntos (modal del paciente, reportes, avisos y panel de duplicados) |
 | Sexo (`pf-sexo`) | select | no | Masculino / Femenino / Otro |
 | Fecha de nacimiento (`pf-fnac`) | fecha | **sí** | |
 | Obra social (`pf-os`) | texto | no | |
